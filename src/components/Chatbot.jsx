@@ -8,14 +8,13 @@ const Chatbot = () => {
 
     // FLOW STEPS:
     // 0: Name
-    // 1: Intent (Buy/Rent/Sell)
-    // 1.1: Rent Role (Tenant/Owner)
+    // 1: Intent
+    // 1.1: Rent Role
     // 2: Property Type
-    // 3: Location (Where looking vs Where located)
-    // 4: Specs (Dorms/Baths)
-    // 5: Garage/Budget Switch
-    //    -> If Seeker: 5 = Budget -> 9
-    //    -> If Owner:  5 = Garage -> 6 (Appraisal) -> 9
+    // 3: Location
+    // 4: Specs
+    // 5: Garage (Owner) OR Budget (Seeker)
+    // 6: Appraisal (Owner)
     // 9: Phone -> End
 
     const [step, setStep] = useState(0);
@@ -23,10 +22,7 @@ const Chatbot = () => {
         { text: 'Bienvenido a Destino Abril. Soy su asistente personal. ¿Cómo se llama?', sender: 'bot' }
     ]);
     const [input, setInput] = useState('');
-
-    // New State: userType ('seeker' = Buy/Tenant, 'owner' = Sell/Landlord)
     const [userType, setUserType] = useState('seeker');
-
     const [data, setData] = useState({
         name: '', intent: '', rentType: '', type: '', location: '', specs: '', garage: '', appraisal: '', budget: '', phone: ''
     });
@@ -55,6 +51,11 @@ const Chatbot = () => {
         return raw.replace(/hola|soy|me llamo|mi nombre es|buenos dias|buenas tardes/gi, '').replace(/[\.,!]/g, '').trim();
     };
 
+    const isValidPhone = (str) => {
+        // Simple check: at least 7 digits, allows +, -, space
+        return /^[\d\s\-\+]{7,}$/.test(str);
+    };
+
     const handleSend = async () => {
         if (!input.trim()) return;
 
@@ -62,101 +63,111 @@ const Chatbot = () => {
         setMessages(newMessages);
         setInput('');
 
-        // 1. Gemini AI Check
-        const isQuestion = input.includes('?') || input.includes('¿') || input.length > 15;
-        let aiAnswer = null;
+        // 1. CRITICAL: smart check for flow interruption
+        // If we are expecting specific data (Phone, Budget) but user asks a question or says something long/unrelated,
+        // we should route to AI instead of forcing the data.
 
-        if (isQuestion || step === 1) {
-            aiAnswer = await getAIResponse(input);
+        let shouldCheckAI = false;
+
+        // Always check AI if input is clearly a question
+        if (input.includes('?') || input.includes('¿')) shouldCheckAI = true;
+
+        // Step 9 (Phone) VALIDATION
+        if (step === 9 && !isValidPhone(input)) {
+            shouldCheckAI = true; // Use AI to handle "I don't want to give it" or "I need a garage"
         }
 
-        if (aiAnswer) {
-            addBotMessage(aiAnswer, undefined, 0);
-            if (step > 0 && step < 9) {
-                setTimeout(() => {
-                    setMessages(prev => [...prev, { text: "Para continuar con el proceso, ¿podría indicarme su respuesta anterior?", sender: 'bot' }]);
-                }, 6000);
+        // Step 1 (Main Menu) - Loose typing
+        if (step === 1 || step === 1.1) shouldCheckAI = true;
+
+        if (shouldCheckAI) {
+            const aiAnswer = await getAIResponse(input);
+            if (aiAnswer) {
+                addBotMessage(aiAnswer, undefined, 0);
+
+                // If we were asking for Phone (Step 9), gently remind them after answering
+                if (step === 9) {
+                    setTimeout(() => {
+                        setMessages(prev => [...prev, { text: "Si desea que lo contactemos, por favor indíquenos su WhatsApp cuando guste.", sender: 'bot' }]);
+                    }, 5000);
+                }
+                // If asking for Budget (Step 5 seeker)
+                else if (step === 5 && userType === 'seeker') {
+                    setTimeout(() => {
+                        setMessages(prev => [...prev, { text: "¿Tiene un presupuesto estimado en mente?", sender: 'bot' }]);
+                    }, 5000);
+                }
+                // General reminder to continue flow
+                else if (step > 0 && step < 9) {
+                    setTimeout(() => {
+                        setMessages(prev => [...prev, { text: "¿Podríamos retomar la pregunta anterior?", sender: 'bot' }]);
+                    }, 6000);
+                }
+                return; // Stop here, don't execute step logic
             }
-            return;
         }
 
-        // 2. Logic Flow
+        // 2. Logic Flow (Only runs if AI didn't intercept)
 
-        // Step 0: Name
         if (step === 0) {
             const cleanedName = cleanName(input);
             const finalName = cleanedName.length > 0 ? cleanedName : input.split(' ').slice(0, 2).join(' ');
             setData(prev => ({ ...prev, name: finalName }));
             addBotMessage(`¡Qué gusto, ${finalName}! ¿En qué puedo ayudarte hoy?`, 1);
         }
-
-        // Step 1 check handled in handleOption mostly, but for loose typing:
         else if (step === 1) {
             const lower = input.toLowerCase();
             if (lower.includes('comprar')) handleOption('Comprar Propiedad', 1);
             else if (lower.includes('alquilar')) handleOption('Alquilar', 1);
             else if (lower.includes('vender')) handleOption('Vender mi propiedad', 1);
-            else addBotMessage("Por favor, selecciona una opción o dime si buscas Comprar, Alquilar o Vender.", 1);
+            else {
+                // If AI didn't handle it, use standard fallback
+                addBotMessage("Por favor, selecciona una opción o dime si buscas Comprar, Alquilar o Vender.", 1);
+            }
         }
-
-        // Step 1.1 Rent Role
         else if (step === 1.1) {
             const lower = input.toLowerCase();
             if (lower.includes('buscar') || lower.includes('inquilino')) handleOption('Soy Inquilino (Busco)', 1.1);
             else if (lower.includes('ofrecer') || lower.includes('propietario')) handleOption('Soy Propietario (Ofrezco)', 1.1);
             else addBotMessage("¿Buscas alquilar para vivir o eres propietario?", 1.1);
         }
-
-        // Step 3: Location
         else if (step === 3) {
             setData(prev => ({ ...prev, location: input }));
             addBotMessage(userType === 'seeker'
                 ? '¿Qué características busca? (Dormitorios, Baños...)'
                 : '¿Qué características tiene la propiedad? (Dormitorios, Baños...)', 4);
         }
-
-        // Step 4: Specs -> Branching
         else if (step === 4) {
             setData(prev => ({ ...prev, specs: input }));
             if (userType === 'seeker') {
-                // Seeker -> Ask Budget
                 addBotMessage('¿Cuál es su presupuesto aproximado?', 5);
             } else {
-                // Owner -> Ask Garage
                 addBotMessage('¿Cuenta con cochera o garaje?', 5);
             }
         }
-
-        // Step 5: Handling the Branch
         else if (step === 5) {
             if (userType === 'seeker') {
-                // Input is Budget -> Finish
+                // Budget - Allow anything, but if it was a question it would have been caught above by AI
                 const budget = input;
                 setData(prev => ({ ...prev, budget }));
                 addBotMessage('Entendido. Por último, déjeme su número de WhatsApp para contactarlo.', 9);
             } else {
-                // Input is Garage -> Ask Appraisal
                 setData(prev => ({ ...prev, garage: input }));
                 addBotMessage('¿Desea solicitar una tasación profesional?', 6);
             }
         }
-
-        // Step 6: Appraisal (Owners only)
         else if (step === 6) {
             setData(prev => ({ ...prev, appraisal: input }));
             addBotMessage('Perfecto. Indíqueme su número de WhatsApp.', 9);
         }
-
-        // Step 9: Phone -> End
         else if (step === 9) {
+            // Phone - We already validated it's a phone number or routed to AI above!
             const phone = input;
             const finalData = { ...data, phone, source: 'Chatbot' };
             setData(finalData);
             addBotMessage('Muchas gracias. Un asesor revisará su solicitud y lo contactará a la brevedad.', 10);
             addLead(finalData);
         }
-
-        // Catch-all for typed steps 2 (Type)
         else if (step === 2) {
             setData(prev => ({ ...prev, type: input }));
             addBotMessage(userType === 'seeker'
@@ -173,7 +184,6 @@ const Chatbot = () => {
 
         if (currentStep === 1) {
             setData(prev => ({ ...prev, intent: value }));
-
             if (value === 'Comprar') {
                 setUserType('seeker');
                 addBotMessage('Excelente. ¿Qué tipo de propiedad está buscando?', 2);
@@ -202,11 +212,11 @@ const Chatbot = () => {
                 ? '¿En qué barrio o zona está buscando?'
                 : '¿Dónde se ubica la propiedad?', 3);
         }
-        else if (currentStep === 5) { // Garage (Owner flow only)
+        else if (currentStep === 5) {
             setData(prev => ({ ...prev, garage: value }));
             addBotMessage('¿Desea solicitar una tasación profesional?', 6);
         }
-        else if (currentStep === 6) { // Appraisal
+        else if (currentStep === 6) {
             setData(prev => ({ ...prev, appraisal: value }));
             addBotMessage('Perfecto. Por último, indíqueme su número de WhatsApp.', 9);
         }
@@ -216,7 +226,6 @@ const Chatbot = () => {
         if (step === 1) return ['Comprar Propiedad', 'Alquilar', 'Vender mi propiedad'];
         if (step === 1.1) return ['Soy Inquilino (Busco)', 'Soy Propietario (Ofrezco)'];
         if (step === 2) return ['Casa', 'Apartamento', 'Terreno', 'Local Comercial'];
-        // Step 5 only shows options if Owner (Garage Yes/No). Seekers type budget manually.
         if (step === 5 && userType === 'owner') return ['Sí, tiene cochera', 'No tiene cochera'];
         if (step === 6) return ['Sí, quiero tasación', 'No, gracias'];
         return null;
