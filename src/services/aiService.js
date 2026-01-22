@@ -1,67 +1,63 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+// CLIENT SIDE SERVICE (Zero-Dependency Version)
 
-// Shared Key (Safe for prototype, move to env for production)
 const API_KEY = "AIzaSyClTbbC3T5o8ZzDEc2TohSzL0wdvQDpaoA";
-
-// --- CLIENT SIDE LOGIC (The Safety Net) ---
-const genAI = new GoogleGenerativeAI(API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
 
 const KNOWLEDGE_BASE = `
 EMPRESA: Inmobiliaria Destino Abril.
 SERVICIOS: Venta, Alquiler, Tasaciones.
 UBICACIÓN: Montevideo, Uruguay.
 GARANTÍAS: Aceptamos ANDA, Contaduría (CGN), Porto Seguro, Sura.
-CONTRATOS: Generalmente 2 años.
-COMISIÓN: 1 mes de alquiler + IVA (para alquileres) o 3% + IVA (para ventas).
-CONTACTO: El objetivo final es conseguir el WhatsApp del cliente.
 `;
 
-const getClientSideResponse = async (message, step, context) => {
-    console.log("⚠️ Using Client-Side Fallback");
+// Direct Browser Fetch to Google (The "Parachute")
+const getDirectFromGoogle = async (message, step, context) => {
+    console.log("🪂 Using Direct Google API Fallback");
     try {
-        const prompt = `
-            ACT COMO: "Abril", el cerebro de un chatbot inmobiliario.
-            CONOCIMIENTO: ${KNOWLEDGE_BASE}
-            SITUACIÓN: Paso "${step}" (${context}). Usuario dice: "${message}".
-
-            TU OBJETIVO: Clasificar y responder.
-            Devuelve SOLO un JSON:
-            {
-                "classification": "VALID_DATA" | "QUESTION" | "IRRELEVANT",
-                "reply": "Texto para responder duda o saludos (vacio si VALID_DATA)",
-                "extracted_data": "Dato limpio si VALID_DATA"
-            }
-            
-            REGLAS:
-            - VALID_DATA: Si responde lo que pide el paso (Nombre, Ubicación, etc).
-            - QUESTION: Si pregunta dudas (garantias, etc). Responde usando CONOCIMIENTO.
-            - IRRELEVANT: Si no tiene sentido.
+        const systemPrompt = `
+        ACT AS: "Abril", chatbot inmobiliario.
+        KNOWLEDGE: ${KNOWLEDGE_BASE}
+        CONTEXT: Step "${step}" (${context}). User said: "${message}".
+        
+        GOAL: Classify and Respond. RETURN JSON ONLY.
+        Format: { "classification": "VALID_DATA"|"QUESTION"|"IRRELEVANT", "reply": "...", "extracted_data": "..." }
+        
+        RULES:
+        - VALID_DATA: Direct answer to the current step.
+        - QUESTION: User asks something. Answer in 'reply'.
+        - IRRELEVANT: Nonsense/Greeting. Polite reply.
         `;
 
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        let text = response.text().trim();
-        text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+        const response = await fetch(API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{ parts: [{ text: systemPrompt }] }]
+            })
+        });
 
-        return JSON.parse(text);
+        const data = await response.json();
+        let aiText = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+        aiText = aiText.replace(/```json/g, '').replace(/```/g, '').trim();
+
+        return JSON.parse(aiText);
+
     } catch (e) {
-        console.error("Client-Side Logic Failed:", e);
+        console.error("Direct API Fail:", e);
         return {
             classification: "QUESTION",
-            reply: "Lo siento, estoy teniendo problemas técnicos. ¿Podrías intentar de nuevo?",
+            reply: "Mis disculpas, parece que hay inestabilidad en la red. ¿Podría repetirlo?",
             extracted_data: null
         };
     }
 };
 
-// --- MAIN FUNCTION ---
 export const getAIResponse = async (userMessage, stepName, stepContext) => {
     try {
         // 1. Try Serverless Function (Primary)
-        // We set a short timeout so we don't keep the user waiting if it fails
+        // Short timeout (3s) to fallback quickly
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 4000); // 4 seconds timeout
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
 
         const response = await fetch('/.netlify/functions/chat', {
             method: 'POST',
@@ -72,14 +68,11 @@ export const getAIResponse = async (userMessage, stepName, stepContext) => {
 
         clearTimeout(timeoutId);
 
-        if (!response.ok) throw new Error("Server error");
-
-        const data = await response.json();
-        return data;
+        if (!response.ok) throw new Error("Server unreachable");
+        return await response.json();
 
     } catch (error) {
-        // 2. Fallback to Client-Side (Secondary)
-        console.warn("Backend unavailable, switching to Client-Side AI...", error);
-        return await getClientSideResponse(userMessage, stepName, stepContext);
+        // 2. Fallback to Direct Google API
+        return await getDirectFromGoogle(userMessage, stepName, stepContext);
     }
 };
