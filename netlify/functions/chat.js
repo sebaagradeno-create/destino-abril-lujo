@@ -1,6 +1,6 @@
-const { GoogleGenerativeAI } = require("@google/generative-ai");
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
-// WARNING: For production, use process.env.GEMINI_API_KEY
+// WARNING: In a production app, use process.env.GEMINI_API_KEY
 // For this prototype, we use the key ensuring it works immediately.
 const API_KEY = "AIzaSyClTbbC3T5o8ZzDEc2TohSzL0wdvQDpaoA";
 
@@ -17,7 +17,7 @@ COMISIÓN: 1 mes de alquiler + IVA (para alquileres) o 3% + IVA (para ventas).
 CONTACTO: El objetivo final es conseguir el WhatsApp del cliente.
 `;
 
-exports.handler = async function (event, context) {
+export const handler = async function (event, context) {
     // Only allow POST
     if (event.httpMethod !== "POST") {
         return { statusCode: 405, body: "Method Not Allowed" };
