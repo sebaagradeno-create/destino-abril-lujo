@@ -31,6 +31,7 @@ const CRM = () => {
                                 <tr className="border-b border-white/10 text-gray-400 text-xs uppercase tracking-wider">
                                     <th className="p-4 font-normal">Cliente</th>
                                     <th className="p-4 font-normal">Estado/Interés</th>
+                                    <th className="p-4 font-normal">Detalles</th>
                                     <th className="p-4 font-normal">Contacto</th>
                                     <th className="p-4 font-normal">Fecha</th>
                                 </tr>
@@ -51,13 +52,26 @@ const CRM = () => {
                                                 {lead.intent}
                                             </span>
                                         </td>
+                                        <td className="p-4 text-xs text-gray-400">
+                                            {lead.type ? (
+                                                <div className="flex flex-col gap-0.5">
+                                                    <span className="text-gray-200 font-bold">{lead.type}</span>
+                                                    <span>{lead.location}</span>
+                                                    <span>{lead.specs}</span>
+                                                    {lead.garage === 'Sí, tiene cochera' && <span className="text-[#D4AF37]">Con Cochera</span>}
+                                                    {lead.appraisal === 'Sí, quiero tasación' && <span className="text-red-400 font-bold bg-red-900/20 px-1 rounded w-fit">Solicita Tasación</span>}
+                                                </div>
+                                            ) : (
+                                                <span className="opacity-50">-</span>
+                                            )}
+                                        </td>
                                         <td className="p-4 text-gray-300">
                                             <div className="flex items-center gap-2">
                                                 <Phone size={14} className="text-gray-500" /> {lead.phone}
                                             </div>
                                         </td>
                                         <td className="p-4 text-gray-400 font-mono text-xs">
-                                            {lead.date}
+                                            {new Date(lead.created_at || lead.date || Date.now()).toLocaleString()}
                                         </td>
                                     </tr>
                                 ))}
