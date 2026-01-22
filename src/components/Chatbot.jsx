@@ -13,8 +13,8 @@ const Chatbot = () => {
     // 2: Property Type
     // 3: Location
     // 4: Specs
-    // 5: Garage (Owner) OR Budget (Seeker)
-    // 6: Appraisal (Owner)
+    // 5: Garage/Budget
+    // 6: Appraisal
     // 9: Phone -> End
 
     const [step, setStep] = useState(0);
@@ -45,17 +45,6 @@ const Chatbot = () => {
         }, delay);
     };
 
-    const cleanName = (raw) => {
-        const lower = raw.toLowerCase();
-        if (raw.split(' ').length < 2) return raw;
-        return raw.replace(/hola|soy|me llamo|mi nombre es|buenos dias|buenas tardes/gi, '').replace(/[\.,!]/g, '').trim();
-    };
-
-    const isValidPhone = (str) => {
-        // Simple check: at least 7 digits, allows +, -, space
-        return /^[\d\s\-\+]{7,}$/.test(str);
-    };
-
     const handleSend = async () => {
         if (!input.trim()) return;
 
@@ -63,81 +52,81 @@ const Chatbot = () => {
         setMessages(newMessages);
         setInput('');
 
-        // 1. CONTINUOUS AI REASONING (Gatekeeper)
-        // We now send EVERY text input to the AI to decide if it's a valid answer to the current step or a question.
-        // We skip this only for simple button clicks (handled in handleOption) or if we are just starting.
-
+        // Define Context for AI
+        let stepName = `Step ${step}`;
         let contextDescription = "";
-        if (step === 0) contextDescription = "Pedir Nombre del cliente";
-        else if (step === 3) contextDescription = "Pedir Ubicación o Barrio de interés";
-        else if (step === 4) contextDescription = "Pedir Características (Dormitorios/Baños)";
-        else if (step === 5 && userType === 'seeker') contextDescription = "Pedir Presupuesto estimado";
-        else if (step === 9) contextDescription = "Pedir Número de Teléfono/WhatsApp";
-        else contextDescription = "Conversación general";
 
-        let aiAnswer = null;
+        if (step === 0) { stepName = "0"; contextDescription = "Pedir Nombre del cliente"; }
+        else if (step === 1) { stepName = "1"; contextDescription = "Elegir Intención (Comprar, Alquilar, Vender)"; }
+        else if (step === 3) { stepName = "3"; contextDescription = "Pedir Ubicación o Barrio"; }
+        else if (step === 4) { stepName = "4"; contextDescription = "Pedir Dormitorios y Baños"; }
+        else if (step === 5 && userType === 'seeker') { stepName = "5_seeker"; contextDescription = "Pedir Presupuesto en dolares o pesos"; }
+        else if (step === 9) { stepName = "9"; contextDescription = "Pedir Número de Teléfono/WhatsApp"; }
+        else { stepName = "GENERAL"; contextDescription = "Conversación general"; }
 
-        // If it's a text input step, we consult the AI
-        if (step === 0 || step === 3 || step === 4 || (step === 5 && userType === 'seeker') || step === 9 || step === 1) {
-            aiAnswer = await getAIResponse(input, contextDescription);
+        // CALL EXTERNAL BRAIN
+        // Only consult AI for robust text steps (0, 3, 4, 5-seeker, 9) or general questions
+        // For simple buttons (1, 2, 5-owner, 6) we prefer clicks but if they type we check.
+
+        let aiOutcome = null;
+
+        // Loading state could go here...
+
+        try {
+            aiOutcome = await getAIResponse(input, stepName, contextDescription);
+        } catch (e) {
+            console.error("Brain fail", e);
         }
 
-        // 2. Handling AI Decision
-        if (aiAnswer && aiAnswer !== "VALID_DATA") {
-            // If AI says it's NOT valid data (it's a question, nonsense, or interrupt), we show the AI response.
-            addBotMessage(aiAnswer, undefined, 0);
-
-            // Re-prompt logic to keep flow alive
-            if (step > 0 && step < 10) {
-                setTimeout(() => {
-                    // Gentle nudge based on step
-                    let nudge = "¿Podríamos continuar con la pregunta anterior?";
-                    if (step === 9) nudge = "Para poder contactarlo, cuando guste me deja su número.";
-                    if (step === 0) nudge = "¿Me podría indicar su nombre para dirigirme a usted?";
-
-                    const lastBotMsg = messages.filter(m => m.sender === 'bot').pop();
-                    if (lastBotMsg && lastBotMsg.text !== nudge) {
-                        setMessages(prev => [...prev, { text: nudge, sender: 'bot' }]);
-                    }
-                }, 6000);
-            }
-            return; // Stop processing, wait for next input
+        if (aiOutcome && aiOutcome.classification === "QUESTION") {
+            // User asked a question. Answer and STAY.
+            addBotMessage(aiOutcome.reply || "No tengo esa información por el momento.", undefined, 0);
+            return;
         }
 
-        // If aiAnswer === "VALID_DATA" (or null/error), we proceed with the Logic Flow below.
+        if (aiOutcome && aiOutcome.classification === "IRRELEVANT") {
+            // User said nonsense. Reply politely and STAY.
+            addBotMessage(aiOutcome.reply || "Disculpa, ¿podrías repetirme eso?", undefined, 0);
+            return;
+        }
 
-        // 2. Logic Flow (Only runs if AI didn't intercept)
+        // IF VALID_DATA, we use 'extracted_data' instead of 'input' because it's cleaner
+        const cleanInput = (aiOutcome && aiOutcome.classification === "VALID_DATA" && aiOutcome.extracted_data)
+            ? aiOutcome.extracted_data
+            : input;
+
+        // ----------------------------------------
+        // STANDARD LOGIC FLOW (With Cleaned Data)
+        // ----------------------------------------
 
         if (step === 0) {
-            const cleanedName = cleanName(input);
-            const finalName = cleanedName.length > 0 ? cleanedName : input.split(' ').slice(0, 2).join(' ');
-            setData(prev => ({ ...prev, name: finalName }));
-            addBotMessage(`¡Qué gusto, ${finalName}! ¿En qué puedo ayudarte hoy?`, 1);
+            setData(prev => ({ ...prev, name: cleanInput }));
+            addBotMessage(`¡Qué gusto, ${cleanInput}! ¿En qué puedo ayudarte hoy?`, 1);
         }
         else if (step === 1) {
-            const lower = input.toLowerCase();
+            const lower = cleanInput.toLowerCase();
             if (lower.includes('comprar')) handleOption('Comprar Propiedad', 1);
             else if (lower.includes('alquilar')) handleOption('Alquilar', 1);
             else if (lower.includes('vender')) handleOption('Vender mi propiedad', 1);
             else {
-                // If AI didn't handle it, use standard fallback
-                addBotMessage("Por favor, selecciona una opción o dime si buscas Comprar, Alquilar o Vender.", 1);
+                // Should have been caught by "QUESTION" or "IRRELEVANT" but just in case
+                addBotMessage("Por favor seleccione una opción.", 1);
             }
         }
         else if (step === 1.1) {
-            const lower = input.toLowerCase();
+            const lower = cleanInput.toLowerCase();
             if (lower.includes('buscar') || lower.includes('inquilino')) handleOption('Soy Inquilino (Busco)', 1.1);
             else if (lower.includes('ofrecer') || lower.includes('propietario')) handleOption('Soy Propietario (Ofrezco)', 1.1);
-            else addBotMessage("¿Buscas alquilar para vivir o eres propietario?", 1.1);
+            else addBotMessage("¿Buscas alquilar o eres propietario?", 1.1);
         }
         else if (step === 3) {
-            setData(prev => ({ ...prev, location: input }));
+            setData(prev => ({ ...prev, location: cleanInput }));
             addBotMessage(userType === 'seeker'
                 ? '¿Qué características busca? (Dormitorios, Baños...)'
                 : '¿Qué características tiene la propiedad? (Dormitorios, Baños...)', 4);
         }
         else if (step === 4) {
-            setData(prev => ({ ...prev, specs: input }));
+            setData(prev => ({ ...prev, specs: cleanInput }));
             if (userType === 'seeker') {
                 addBotMessage('¿Cuál es su presupuesto aproximado?', 5);
             } else {
@@ -146,29 +135,26 @@ const Chatbot = () => {
         }
         else if (step === 5) {
             if (userType === 'seeker') {
-                // Budget - Allow anything, but if it was a question it would have been caught above by AI
-                const budget = input;
-                setData(prev => ({ ...prev, budget }));
+                setData(prev => ({ ...prev, budget: cleanInput }));
                 addBotMessage('Entendido. Por último, déjeme su número de WhatsApp para contactarlo.', 9);
             } else {
-                setData(prev => ({ ...prev, garage: input }));
+                setData(prev => ({ ...prev, garage: cleanInput }));
                 addBotMessage('¿Desea solicitar una tasación profesional?', 6);
             }
         }
         else if (step === 6) {
-            setData(prev => ({ ...prev, appraisal: input }));
+            setData(prev => ({ ...prev, appraisal: cleanInput }));
             addBotMessage('Perfecto. Indíqueme su número de WhatsApp.', 9);
         }
         else if (step === 9) {
-            // Phone - We already validated it's a phone number or routed to AI above!
-            const phone = input;
+            const phone = cleanInput;
             const finalData = { ...data, phone, source: 'Chatbot' };
             setData(finalData);
             addBotMessage('Muchas gracias. Un asesor revisará su solicitud y lo contactará a la brevedad.', 10);
             addLead(finalData);
         }
         else if (step === 2) {
-            setData(prev => ({ ...prev, type: input }));
+            setData(prev => ({ ...prev, type: cleanInput }));
             addBotMessage(userType === 'seeker'
                 ? '¿En qué barrio o zona está buscando?'
                 : '¿Ubicación de la propiedad?', 3);
@@ -260,7 +246,7 @@ const Chatbot = () => {
                                     <div>
                                         <h3 className="text-sm font-bold text-amber-500 font-header tracking-wider">DESTINO ABRIL</h3>
                                         <span className="text-xs text-gray-400 flex items-center gap-1">
-                                            <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span> En línea
+                                            <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span> v3.0 Server-Brain
                                         </span>
                                     </div>
                                 </div>
