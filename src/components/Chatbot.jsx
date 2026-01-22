@@ -5,16 +5,32 @@ import { getAIResponse } from '../services/aiService';
 
 const Chatbot = () => {
     const [isOpen, setIsOpen] = useState(false);
-    // Steps: 
-    // 0=Name, 1=Intent, 1.1=RentIntent, 2=Type, 3=Loc, 4=Specs, 5=Garage, 6=Tasacion, 9=Phone, 10=End
+
+    // FLOW STEPS:
+    // 0: Name
+    // 1: Intent (Buy/Rent/Sell)
+    // 1.1: Rent Role (Tenant/Owner)
+    // 2: Property Type
+    // 3: Location (Where looking vs Where located)
+    // 4: Specs (Dorms/Baths)
+    // 5: Garage/Budget Switch
+    //    -> If Seeker: 5 = Budget -> 9
+    //    -> If Owner:  5 = Garage -> 6 (Appraisal) -> 9
+    // 9: Phone -> End
+
     const [step, setStep] = useState(0);
     const [messages, setMessages] = useState([
         { text: 'Bienvenido a Destino Abril. Soy su asistente personal. ¿Cómo se llama?', sender: 'bot' }
     ]);
     const [input, setInput] = useState('');
+
+    // New State: userType ('seeker' = Buy/Tenant, 'owner' = Sell/Landlord)
+    const [userType, setUserType] = useState('seeker');
+
     const [data, setData] = useState({
-        name: '', intent: '', rentType: '', type: '', location: '', specs: '', garage: '', appraisal: '', phone: ''
+        name: '', intent: '', rentType: '', type: '', location: '', specs: '', garage: '', appraisal: '', budget: '', phone: ''
     });
+
     const messagesEndRef = useRef(null);
     const { addLead } = useCRM();
 
@@ -33,15 +49,10 @@ const Chatbot = () => {
         }, delay);
     };
 
-    // Smart Name Cleaner
     const cleanName = (raw) => {
         const lower = raw.toLowerCase();
-        // Return raw if it's short, otherwise try to strip common phrases
         if (raw.split(' ').length < 2) return raw;
-
-        return raw.replace(/hola|soy|me llamo|mi nombre es|buenos dias|buenas tardes/gi, '')
-            .replace(/[\.,!]/g, '') // remove punctuation
-            .trim();
+        return raw.replace(/hola|soy|me llamo|mi nombre es|buenos dias|buenas tardes/gi, '').replace(/[\.,!]/g, '').trim();
     };
 
     const handleSend = async () => {
@@ -52,7 +63,6 @@ const Chatbot = () => {
         setInput('');
 
         // 1. Gemini AI Check
-        // Allow AI to answer questions at any time, or if we are in Step 1 (Main Menu) and user types loosely
         const isQuestion = input.includes('?') || input.includes('¿') || input.length > 15;
         let aiAnswer = null;
 
@@ -62,12 +72,9 @@ const Chatbot = () => {
 
         if (aiAnswer) {
             addBotMessage(aiAnswer, undefined, 0);
-            // Nudge back to flow if needed
             if (step > 0 && step < 9) {
                 setTimeout(() => {
-                    const lastBotMsg = messages.filter(m => m.sender === 'bot').pop();
-                    // Don't repeat if the AI answer already guided them, but usually good to remind
-                    // setMessages(prev => [...prev, { text: "Para continuar, seleccione una opción...", sender: 'bot' }]);
+                    setMessages(prev => [...prev, { text: "Para continuar con el proceso, ¿podría indicarme su respuesta anterior?", sender: 'bot' }]);
                 }, 6000);
             }
             return;
@@ -75,55 +82,86 @@ const Chatbot = () => {
 
         // 2. Logic Flow
 
-        // Step 0: Name Capture
+        // Step 0: Name
         if (step === 0) {
             const cleanedName = cleanName(input);
-            // Fallback: If cleaned name is empty or too long, just take first 2 words
             const finalName = cleanedName.length > 0 ? cleanedName : input.split(' ').slice(0, 2).join(' ');
-
             setData(prev => ({ ...prev, name: finalName }));
             addBotMessage(`¡Qué gusto, ${finalName}! ¿En qué puedo ayudarte hoy?`, 1);
         }
 
-        // Step 1: Intent Selection (Handling typed input instead of click)
+        // Step 1 check handled in handleOption mostly, but for loose typing:
         else if (step === 1) {
             const lower = input.toLowerCase();
             if (lower.includes('comprar')) handleOption('Comprar Propiedad', 1);
             else if (lower.includes('alquilar')) handleOption('Alquilar', 1);
             else if (lower.includes('vender')) handleOption('Vender mi propiedad', 1);
-            else addBotMessage("Entiendo. Para poder ayudarte mejor, por favor selecciona una de las opciones o dime si buscas comprar, alquilar o vender.", 1);
+            else addBotMessage("Por favor, selecciona una opción o dime si buscas Comprar, Alquilar o Vender.", 1);
         }
 
-        // Step 1.1: Rent sub-flow (Handling typed input)
+        // Step 1.1 Rent Role
         else if (step === 1.1) {
             const lower = input.toLowerCase();
             if (lower.includes('buscar') || lower.includes('inquilino')) handleOption('Soy Inquilino (Busco)', 1.1);
-            else if (lower.includes('publicar') || lower.includes('propietario') || lower.includes('dueño')) handleOption('Soy Propietario (Ofrezco)', 1.1);
-            else addBotMessage("¿Buscas una propiedad para vivir o quieres ofrecer la tuya en alquiler?", 1.1);
+            else if (lower.includes('ofrecer') || lower.includes('propietario')) handleOption('Soy Propietario (Ofrezco)', 1.1);
+            else addBotMessage("¿Buscas alquilar para vivir o eres propietario?", 1.1);
         }
 
-        // General Flows
-        else if (step === 3) { // Location
+        // Step 3: Location
+        else if (step === 3) {
             setData(prev => ({ ...prev, location: input }));
-            addBotMessage('¿Cuántos dormitorios y baños tiene? (ej: 3 dorm, 2 baños)', 4);
+            addBotMessage(userType === 'seeker'
+                ? '¿Qué características busca? (Dormitorios, Baños...)'
+                : '¿Qué características tiene la propiedad? (Dormitorios, Baños...)', 4);
         }
-        else if (step === 4) { // Specs
+
+        // Step 4: Specs -> Branching
+        else if (step === 4) {
             setData(prev => ({ ...prev, specs: input }));
-            addBotMessage('¿Cuenta con cochera o garaje?', 5);
+            if (userType === 'seeker') {
+                // Seeker -> Ask Budget
+                addBotMessage('¿Cuál es su presupuesto aproximado?', 5);
+            } else {
+                // Owner -> Ask Garage
+                addBotMessage('¿Cuenta con cochera o garaje?', 5);
+            }
         }
-        else if (step === 9) { // Phone -> End
+
+        // Step 5: Handling the Branch
+        else if (step === 5) {
+            if (userType === 'seeker') {
+                // Input is Budget -> Finish
+                const budget = input;
+                setData(prev => ({ ...prev, budget }));
+                addBotMessage('Entendido. Por último, déjeme su número de WhatsApp para contactarlo.', 9);
+            } else {
+                // Input is Garage -> Ask Appraisal
+                setData(prev => ({ ...prev, garage: input }));
+                addBotMessage('¿Desea solicitar una tasación profesional?', 6);
+            }
+        }
+
+        // Step 6: Appraisal (Owners only)
+        else if (step === 6) {
+            setData(prev => ({ ...prev, appraisal: input }));
+            addBotMessage('Perfecto. Indíqueme su número de WhatsApp.', 9);
+        }
+
+        // Step 9: Phone -> End
+        else if (step === 9) {
             const phone = input;
             const finalData = { ...data, phone, source: 'Chatbot' };
             setData(finalData);
-            addBotMessage('Gracias por la información. Un agente analizará su solicitud y lo contactará a la brevedad.', 10);
+            addBotMessage('Muchas gracias. Un asesor revisará su solicitud y lo contactará a la brevedad.', 10);
             addLead(finalData);
         }
-        else {
-            // If user types something in other steps where we expect clicks (like Type or Yes/No)
-            // We try to be smart, otherwise just accept it as the answer
-            if (step === 2) { setData(prev => ({ ...prev, type: input })); addBotMessage('¿En qué barrio o zona se encuentra?', 3); }
-            else if (step === 5) { setData(prev => ({ ...prev, garage: input })); addBotMessage('¿Desea solicitar una tasación profesional?', 6); }
-            else if (step === 6) { setData(prev => ({ ...prev, appraisal: input })); addBotMessage('Perfecto. Indíqueme su número de WhatsApp.', 9); }
+
+        // Catch-all for typed steps 2 (Type)
+        else if (step === 2) {
+            setData(prev => ({ ...prev, type: input }));
+            addBotMessage(userType === 'seeker'
+                ? '¿En qué barrio o zona está buscando?'
+                : '¿Ubicación de la propiedad?', 3);
         }
     };
 
@@ -133,39 +171,53 @@ const Chatbot = () => {
 
         setMessages(prev => [...prev, { text: text, sender: 'user' }]);
 
-        if (currentStep === 1) { // Main Intent
+        if (currentStep === 1) {
             setData(prev => ({ ...prev, intent: value }));
+
             if (value === 'Comprar') {
-                addBotMessage('Excelente. Para asesorarlo mejor, déjeme su número de WhatsApp.', 9);
+                setUserType('seeker');
+                addBotMessage('Excelente. ¿Qué tipo de propiedad está buscando?', 2);
             }
             else if (value === 'Alquilar') {
                 addBotMessage('¿Busca una propiedad para alquilar (Inquilino) o desea ofrecer la suya (Propietario)?', 1.1);
             }
             else { // Vender
-                addBotMessage('Entendido. ¿Qué tipo de propiedad es?', 2);
+                setUserType('owner');
+                addBotMessage('Entendido. ¿Qué tipo de propiedad desea vender?', 2);
             }
         }
-        else if (currentStep === 1.1) { // Rent Sub-Intent
+        else if (currentStep === 1.1) {
             setData(prev => ({ ...prev, rentType: value }));
             if (value === 'Soy Inquilino (Busco)') {
-                // Tenant Flow -> Jump to Location? Or Type? Let's go to Type
-                addBotMessage('¿Qué tipo de propiedad está buscando?', 2);
+                setUserType('seeker');
+                addBotMessage('¿Qué tipo de propiedad busca?', 2);
             } else {
-                // Owner Flow -> Same capture
+                setUserType('owner');
                 addBotMessage('Perfecto. ¿Qué tipo de propiedad ofrece?', 2);
             }
         }
-        // ... Rest of flows similar to before
-        else if (currentStep === 2) { setData(prev => ({ ...prev, type: value })); addBotMessage('¿En qué barrio o zona se encuentra?', 3); }
-        else if (currentStep === 5) { setData(prev => ({ ...prev, garage: value })); addBotMessage('¿Desea solicitar una tasación profesional?', 6); }
-        else if (currentStep === 6) { setData(prev => ({ ...prev, appraisal: value })); addBotMessage('Perfecto. Por último, indíqueme su número de WhatsApp.', 9); }
+        else if (currentStep === 2) {
+            setData(prev => ({ ...prev, type: value }));
+            addBotMessage(userType === 'seeker'
+                ? '¿En qué barrio o zona está buscando?'
+                : '¿Dónde se ubica la propiedad?', 3);
+        }
+        else if (currentStep === 5) { // Garage (Owner flow only)
+            setData(prev => ({ ...prev, garage: value }));
+            addBotMessage('¿Desea solicitar una tasación profesional?', 6);
+        }
+        else if (currentStep === 6) { // Appraisal
+            setData(prev => ({ ...prev, appraisal: value }));
+            addBotMessage('Perfecto. Por último, indíqueme su número de WhatsApp.', 9);
+        }
     };
 
     const renderOptions = () => {
         if (step === 1) return ['Comprar Propiedad', 'Alquilar', 'Vender mi propiedad'];
         if (step === 1.1) return ['Soy Inquilino (Busco)', 'Soy Propietario (Ofrezco)'];
         if (step === 2) return ['Casa', 'Apartamento', 'Terreno', 'Local Comercial'];
-        if (step === 5) return ['Sí, tiene cochera', 'No tiene cochera'];
+        // Step 5 only shows options if Owner (Garage Yes/No). Seekers type budget manually.
+        if (step === 5 && userType === 'owner') return ['Sí, tiene cochera', 'No tiene cochera'];
         if (step === 6) return ['Sí, quiero tasación', 'No, gracias'];
         return null;
     };
