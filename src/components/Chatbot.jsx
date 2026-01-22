@@ -63,49 +63,48 @@ const Chatbot = () => {
         setMessages(newMessages);
         setInput('');
 
-        // 1. CRITICAL: smart check for flow interruption
-        // If we are expecting specific data (Phone, Budget) but user asks a question or says something long/unrelated,
-        // we should route to AI instead of forcing the data.
+        // 1. CONTINUOUS AI REASONING (Gatekeeper)
+        // We now send EVERY text input to the AI to decide if it's a valid answer to the current step or a question.
+        // We skip this only for simple button clicks (handled in handleOption) or if we are just starting.
 
-        let shouldCheckAI = false;
+        let contextDescription = "";
+        if (step === 0) contextDescription = "Pedir Nombre del cliente";
+        else if (step === 3) contextDescription = "Pedir Ubicación o Barrio de interés";
+        else if (step === 4) contextDescription = "Pedir Características (Dormitorios/Baños)";
+        else if (step === 5 && userType === 'seeker') contextDescription = "Pedir Presupuesto estimado";
+        else if (step === 9) contextDescription = "Pedir Número de Teléfono/WhatsApp";
+        else contextDescription = "Conversación general";
 
-        // Always check AI if input is clearly a question
-        if (input.includes('?') || input.includes('¿')) shouldCheckAI = true;
+        let aiAnswer = null;
 
-        // Step 9 (Phone) VALIDATION
-        if (step === 9 && !isValidPhone(input)) {
-            shouldCheckAI = true; // Use AI to handle "I don't want to give it" or "I need a garage"
+        // If it's a text input step, we consult the AI
+        if (step === 0 || step === 3 || step === 4 || (step === 5 && userType === 'seeker') || step === 9 || step === 1) {
+            aiAnswer = await getAIResponse(input, contextDescription);
         }
 
-        // Step 1 (Main Menu) - Loose typing
-        if (step === 1 || step === 1.1) shouldCheckAI = true;
+        // 2. Handling AI Decision
+        if (aiAnswer && aiAnswer !== "VALID_DATA") {
+            // If AI says it's NOT valid data (it's a question, nonsense, or interrupt), we show the AI response.
+            addBotMessage(aiAnswer, undefined, 0);
 
-        if (shouldCheckAI) {
-            const aiAnswer = await getAIResponse(input);
-            if (aiAnswer) {
-                addBotMessage(aiAnswer, undefined, 0);
+            // Re-prompt logic to keep flow alive
+            if (step > 0 && step < 10) {
+                setTimeout(() => {
+                    // Gentle nudge based on step
+                    let nudge = "¿Podríamos continuar con la pregunta anterior?";
+                    if (step === 9) nudge = "Para poder contactarlo, cuando guste me deja su número.";
+                    if (step === 0) nudge = "¿Me podría indicar su nombre para dirigirme a usted?";
 
-                // If we were asking for Phone (Step 9), gently remind them after answering
-                if (step === 9) {
-                    setTimeout(() => {
-                        setMessages(prev => [...prev, { text: "Si desea que lo contactemos, por favor indíquenos su WhatsApp cuando guste.", sender: 'bot' }]);
-                    }, 5000);
-                }
-                // If asking for Budget (Step 5 seeker)
-                else if (step === 5 && userType === 'seeker') {
-                    setTimeout(() => {
-                        setMessages(prev => [...prev, { text: "¿Tiene un presupuesto estimado en mente?", sender: 'bot' }]);
-                    }, 5000);
-                }
-                // General reminder to continue flow
-                else if (step > 0 && step < 9) {
-                    setTimeout(() => {
-                        setMessages(prev => [...prev, { text: "¿Podríamos retomar la pregunta anterior?", sender: 'bot' }]);
-                    }, 6000);
-                }
-                return; // Stop here, don't execute step logic
+                    const lastBotMsg = messages.filter(m => m.sender === 'bot').pop();
+                    if (lastBotMsg && lastBotMsg.text !== nudge) {
+                        setMessages(prev => [...prev, { text: nudge, sender: 'bot' }]);
+                    }
+                }, 6000);
             }
+            return; // Stop processing, wait for next input
         }
+
+        // If aiAnswer === "VALID_DATA" (or null/error), we proceed with the Logic Flow below.
 
         // 2. Logic Flow (Only runs if AI didn't intercept)
 

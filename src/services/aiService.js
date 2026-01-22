@@ -27,13 +27,30 @@ const model = genAI.getGenerativeModel({
     `
 });
 
-export const getAIResponse = async (userMessage) => {
+export const getAIResponse = async (userMessage, currentContext = '') => {
     try {
-        const result = await model.generateContent(userMessage);
+        // We wrap the user message with a specific instruction for the "Gatekeeper" logic
+        const prompt = `
+            Contexto del Chatbot: El usuario está en el paso: "${currentContext}".
+            Mensaje del usuario: "${userMessage}".
+            
+            INSTRUCCIONES DE RAZONAMIENTO:
+            1. Analiza si el mensaje del usuario es una RESPUESTA DIRECTA y VÁLIDA a lo que se le preguntó en el contexto.
+               - Ejemplo: Si el contexto es "Pedir Nombre" y dice "Juan", es VÁLIDO.
+               - Ejemplo: Si el contexto es "Pedir Presupuesto" y dice "2000 dolares", es VÁLIDO.
+               - Ejemplo: Si el contexto es "Pedir Ubicación" y dice "Pocitos", es VÁLIDO.
+            
+            2. Si es una respuesta válida, TU ÚNICA RESPUESTA DEBE SER LA PALABRA: "VALID_DATA". (Sin comillas, sin nada más).
+            
+            3. Si el usuario está haciendo una pregunta, cambiando de tema, o su respuesta no tiene sentido (ej: Pedir teléfono y dice "tengo perro"), ENTONCES respondele amablemente a su inquietud como "Abril" (la asistente inmobiliaria).
+        `;
+
+        const result = await model.generateContent(prompt);
         const response = await result.response;
-        return response.text();
+        const text = response.text().trim();
+        return text;
     } catch (error) {
         console.error("Error generating AI response:", error);
-        return null; // Fallback to standard flow
+        return null; // Fallback to allowing data if AI fails
     }
 };
