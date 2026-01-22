@@ -1,17 +1,19 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { MessageSquare, X, Send, User, Phone, Home } from 'lucide-react';
 import { useCRM } from '../context/CRMContext.jsx';
+import { getAIResponse } from '../services/aiService';
 
 const Chatbot = () => {
     const [isOpen, setIsOpen] = useState(false);
-    // Steps: 0=Name, 1=Intent, 2=Type(if capt), 3=Loc, 4=Specs, 5=Garage, 6=Tasacion, 9=Phone, 10=End
+    // Steps: 
+    // 0=Name, 1=Intent, 1.1=RentIntent, 2=Type, 3=Loc, 4=Specs, 5=Garage, 6=Tasacion, 9=Phone, 10=End
     const [step, setStep] = useState(0);
     const [messages, setMessages] = useState([
         { text: 'Bienvenido a Destino Abril. Soy su asistente personal. ¿Cómo se llama?', sender: 'bot' }
     ]);
     const [input, setInput] = useState('');
     const [data, setData] = useState({
-        name: '', intent: '', type: '', location: '', specs: '', garage: '', appraisal: '', phone: ''
+        name: '', intent: '', rentType: '', type: '', location: '', specs: '', garage: '', appraisal: '', phone: ''
     });
     const messagesEndRef = useRef(null);
     const { addLead } = useCRM();
@@ -31,35 +33,97 @@ const Chatbot = () => {
         }, delay);
     };
 
-    const handleSend = () => {
+    // Smart Name Cleaner
+    const cleanName = (raw) => {
+        const lower = raw.toLowerCase();
+        // Return raw if it's short, otherwise try to strip common phrases
+        if (raw.split(' ').length < 2) return raw;
+
+        return raw.replace(/hola|soy|me llamo|mi nombre es|buenos dias|buenas tardes/gi, '')
+            .replace(/[\.,!]/g, '') // remove punctuation
+            .trim();
+    };
+
+    const handleSend = async () => {
         if (!input.trim()) return;
 
         const newMessages = [...messages, { text: input, sender: 'user' }];
         setMessages(newMessages);
         setInput('');
 
-        // Logic Flow
-        if (step === 0) { // Captured Name
-            setData(prev => ({ ...prev, name: input }));
-            addBotMessage(`Un placer, ${input}. ¿Qué desea realizar hoy?`, 1);
+        // 1. Gemini AI Check
+        // Allow AI to answer questions at any time, or if we are in Step 1 (Main Menu) and user types loosely
+        const isQuestion = input.includes('?') || input.includes('¿') || input.length > 15;
+        let aiAnswer = null;
+
+        if (isQuestion || step === 1) {
+            aiAnswer = await getAIResponse(input);
         }
-        else if (step === 3) { // Captured Location
+
+        if (aiAnswer) {
+            addBotMessage(aiAnswer, undefined, 0);
+            // Nudge back to flow if needed
+            if (step > 0 && step < 9) {
+                setTimeout(() => {
+                    const lastBotMsg = messages.filter(m => m.sender === 'bot').pop();
+                    // Don't repeat if the AI answer already guided them, but usually good to remind
+                    // setMessages(prev => [...prev, { text: "Para continuar, seleccione una opción...", sender: 'bot' }]);
+                }, 6000);
+            }
+            return;
+        }
+
+        // 2. Logic Flow
+
+        // Step 0: Name Capture
+        if (step === 0) {
+            const cleanedName = cleanName(input);
+            // Fallback: If cleaned name is empty or too long, just take first 2 words
+            const finalName = cleanedName.length > 0 ? cleanedName : input.split(' ').slice(0, 2).join(' ');
+
+            setData(prev => ({ ...prev, name: finalName }));
+            addBotMessage(`¡Qué gusto, ${finalName}! ¿En qué puedo ayudarte hoy?`, 1);
+        }
+
+        // Step 1: Intent Selection (Handling typed input instead of click)
+        else if (step === 1) {
+            const lower = input.toLowerCase();
+            if (lower.includes('comprar')) handleOption('Comprar Propiedad', 1);
+            else if (lower.includes('alquilar')) handleOption('Alquilar', 1);
+            else if (lower.includes('vender')) handleOption('Vender mi propiedad', 1);
+            else addBotMessage("Entiendo. Para poder ayudarte mejor, por favor selecciona una de las opciones o dime si buscas comprar, alquilar o vender.", 1);
+        }
+
+        // Step 1.1: Rent sub-flow (Handling typed input)
+        else if (step === 1.1) {
+            const lower = input.toLowerCase();
+            if (lower.includes('buscar') || lower.includes('inquilino')) handleOption('Soy Inquilino (Busco)', 1.1);
+            else if (lower.includes('publicar') || lower.includes('propietario') || lower.includes('dueño')) handleOption('Soy Propietario (Ofrezco)', 1.1);
+            else addBotMessage("¿Buscas una propiedad para vivir o quieres ofrecer la tuya en alquiler?", 1.1);
+        }
+
+        // General Flows
+        else if (step === 3) { // Location
             setData(prev => ({ ...prev, location: input }));
             addBotMessage('¿Cuántos dormitorios y baños tiene? (ej: 3 dorm, 2 baños)', 4);
         }
-        else if (step === 4) { // Captured Specs
+        else if (step === 4) { // Specs
             setData(prev => ({ ...prev, specs: input }));
-            addBotMessage('¿Cuenta con cochera o garaje?', 5); // Goes to Yes/No option
+            addBotMessage('¿Cuenta con cochera o garaje?', 5);
         }
-        else if (step === 9) { // Captured Phone -> FINISH
+        else if (step === 9) { // Phone -> End
             const phone = input;
             const finalData = { ...data, phone, source: 'Chatbot' };
-            setData(finalData); // Update local state just in case
-
-            addBotMessage('Gracias. Un agente analizará la información y lo contactará a la brevedad.', 10);
-
-            // Save to CRM
+            setData(finalData);
+            addBotMessage('Gracias por la información. Un agente analizará su solicitud y lo contactará a la brevedad.', 10);
             addLead(finalData);
+        }
+        else {
+            // If user types something in other steps where we expect clicks (like Type or Yes/No)
+            // We try to be smart, otherwise just accept it as the answer
+            if (step === 2) { setData(prev => ({ ...prev, type: input })); addBotMessage('¿En qué barrio o zona se encuentra?', 3); }
+            else if (step === 5) { setData(prev => ({ ...prev, garage: input })); addBotMessage('¿Desea solicitar una tasación profesional?', 6); }
+            else if (step === 6) { setData(prev => ({ ...prev, appraisal: input })); addBotMessage('Perfecto. Indíqueme su número de WhatsApp.', 9); }
         }
     };
 
@@ -69,32 +133,37 @@ const Chatbot = () => {
 
         setMessages(prev => [...prev, { text: text, sender: 'user' }]);
 
-        if (currentStep === 1) { // Intent Selection
+        if (currentStep === 1) { // Main Intent
             setData(prev => ({ ...prev, intent: value }));
             if (value === 'Comprar') {
                 addBotMessage('Excelente. Para asesorarlo mejor, déjeme su número de WhatsApp.', 9);
-            } else {
-                // Captacion Flow
+            }
+            else if (value === 'Alquilar') {
+                addBotMessage('¿Busca una propiedad para alquilar (Inquilino) o desea ofrecer la suya (Propietario)?', 1.1);
+            }
+            else { // Vender
                 addBotMessage('Entendido. ¿Qué tipo de propiedad es?', 2);
             }
         }
-        else if (currentStep === 2) { // Property Type
-            setData(prev => ({ ...prev, type: value }));
-            addBotMessage('¿En qué barrio o zona se encuentra?', 3);
+        else if (currentStep === 1.1) { // Rent Sub-Intent
+            setData(prev => ({ ...prev, rentType: value }));
+            if (value === 'Soy Inquilino (Busco)') {
+                // Tenant Flow -> Jump to Location? Or Type? Let's go to Type
+                addBotMessage('¿Qué tipo de propiedad está buscando?', 2);
+            } else {
+                // Owner Flow -> Same capture
+                addBotMessage('Perfecto. ¿Qué tipo de propiedad ofrece?', 2);
+            }
         }
-        else if (currentStep === 5) { // Garage
-            setData(prev => ({ ...prev, garage: value }));
-            addBotMessage('¿Desea solicitar una tasación profesional de la propiedad?', 6);
-        }
-        else if (currentStep === 6) { // Tasación
-            setData(prev => ({ ...prev, appraisal: value }));
-            addBotMessage('Perfecto. Por último, indíqueme su número de WhatsApp para contactarlo.', 9);
-        }
+        // ... Rest of flows similar to before
+        else if (currentStep === 2) { setData(prev => ({ ...prev, type: value })); addBotMessage('¿En qué barrio o zona se encuentra?', 3); }
+        else if (currentStep === 5) { setData(prev => ({ ...prev, garage: value })); addBotMessage('¿Desea solicitar una tasación profesional?', 6); }
+        else if (currentStep === 6) { setData(prev => ({ ...prev, appraisal: value })); addBotMessage('Perfecto. Por último, indíqueme su número de WhatsApp.', 9); }
     };
 
-    // Helper to render options based on step
     const renderOptions = () => {
         if (step === 1) return ['Comprar Propiedad', 'Alquilar', 'Vender mi propiedad'];
+        if (step === 1.1) return ['Soy Inquilino (Busco)', 'Soy Propietario (Ofrezco)'];
         if (step === 2) return ['Casa', 'Apartamento', 'Terreno', 'Local Comercial'];
         if (step === 5) return ['Sí, tiene cochera', 'No tiene cochera'];
         if (step === 6) return ['Sí, quiero tasación', 'No, gracias'];
@@ -124,10 +193,17 @@ const Chatbot = () => {
                                 <Home size={18} color="var(--color-gold)" />
                             </div>
                             <div>
-                                <h3 className="text-sm font-bold text-amber-500 font-header tracking-wider">DESTINO ABRIL</h3>
-                                <span className="text-xs text-gray-400 flex items-center gap-1">
-                                    <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span> En línea
-                                </span>
+                                <div className="flex items-center gap-2">
+                                    <div className="w-8 h-8 rounded-full overflow-hidden border border-[#D4AF37]">
+                                        <img src="/logo.jpg" alt="Logo" className="w-full h-full object-cover" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-sm font-bold text-amber-500 font-header tracking-wider">DESTINO ABRIL</h3>
+                                        <span className="text-xs text-gray-400 flex items-center gap-1">
+                                            <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span> En línea
+                                        </span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                         <button onClick={() => setIsOpen(false)} className="text-gray-400 hover:text-white">
@@ -140,8 +216,8 @@ const Chatbot = () => {
                             <div key={idx} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
                                 <div
                                     className={`max-w-[85%] p-3 rounded-lg text-sm leading-relaxed ${msg.sender === 'user'
-                                            ? 'bg-amber-700/20 border border-amber-600/30 text-white rounded-br-none'
-                                            : 'bg-gray-800/80 border border-gray-700 text-gray-200 rounded-bl-none'
+                                        ? 'bg-amber-700/20 border border-amber-600/30 text-white rounded-br-none'
+                                        : 'bg-gray-800/80 border border-gray-700 text-gray-200 rounded-bl-none'
                                         }`}
                                 >
                                     {msg.text}
@@ -149,7 +225,6 @@ const Chatbot = () => {
                             </div>
                         ))}
 
-                        {/* Options */}
                         {renderOptions() && (
                             <div className="flex flex-col gap-2 mt-2 animate-fade-in">
                                 {renderOptions().map(opt => (
@@ -173,13 +248,13 @@ const Chatbot = () => {
                                 value={input}
                                 onChange={(e) => setInput(e.target.value)}
                                 onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                                disabled={renderOptions() !== null || step === 10} // Disable if showing options or ended
-                                placeholder={renderOptions() ? "Seleccione una opción..." : "Escriba su mensaje..."}
-                                className="flex-1 bg-transparent border-none text-white text-sm focus:outline-none placeholder-gray-600 disabled:opacity-50"
+                                // Re-enabled input!
+                                placeholder={renderOptions() ? "Seleccione o escriba..." : "Escriba su mensaje..."}
+                                className="flex-1 bg-transparent border-none text-white text-sm focus:outline-none placeholder-gray-600"
                             />
                             <button
                                 onClick={handleSend}
-                                disabled={!input.trim() || renderOptions() !== null || step === 10}
+                                disabled={!input.trim()}
                                 className="text-amber-500 hover:text-amber-300 disabled:opacity-30 disabled:cursor-not-allowed"
                             >
                                 <Send size={18} />

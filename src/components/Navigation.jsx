@@ -9,8 +9,8 @@ const Navigation = () => {
     return (
         <nav className="fixed top-0 w-full z-40 bg-black/90 backdrop-blur-md border-b border-white/5 h-20 flex items-center justify-between px-6 md:px-12 transition-all duration-300">
             <div className="flex items-center gap-2">
-                <Link to="/" className="text-2xl font-header font-bold tracking-widest text-[#D4AF37] hover:opacity-80 transition-opacity uppercase">
-                    Destino Abril
+                <Link to="/" className="hover:opacity-80 transition-opacity">
+                    <img src="/logo.jpg" alt="Destino Abril" className="h-16 w-auto object-contain" />
                 </Link>
             </div>
 

@@ -1,6 +1,6 @@
 import React from 'react';
 import { useCRM } from '../context/CRMContext.jsx';
-import { ArrowRight, Star, Instagram, Facebook, Twitter } from 'lucide-react';
+import { ArrowRight, Star, Instagram, Facebook, Twitter, Share2 } from 'lucide-react';
 
 const Landing = () => {
     const { properties } = useCRM();
@@ -22,9 +22,20 @@ const Landing = () => {
                     <p className="text-gray-400 text-lg md:text-xl font-light mb-10 max-w-2xl mx-auto">
                         Propiedades de lujo, atención personalizada y la llave a su nuevo estilo de vida en Uruguay.
                     </p>
-                    <button className="btn-primary group flex items-center gap-2 mx-auto">
-                        Ver Propiedades <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
-                    </button>
+                    <div className="flex justify-center gap-4">
+                        <button className="btn-primary group flex items-center gap-2">
+                            Ver Propiedades <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
+                        </button>
+                        <button
+                            onClick={() => {
+                                navigator.clipboard.writeText(window.location.href);
+                                alert('¡Enlace copiado al portapapeles!');
+                            }}
+                            className="bg-transparent border border-[#D4AF37] text-[#D4AF37] px-6 py-3 rounded-sm font-bold uppercase tracking-widest hover:bg-[#D4AF37] hover:text-black transition-all flex items-center gap-2"
+                        >
+                            <Share2 size={18} /> Compartir
+                        </button>
+                    </div>
                 </div>
             </section>
 
