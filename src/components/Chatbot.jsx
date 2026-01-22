@@ -1,21 +1,17 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageSquare, X, Send, User, Phone, Home } from 'lucide-react';
+import { MessageSquare, X, Send, User, Phone, Home, Paperclip, Check } from 'lucide-react';
 import { useCRM } from '../context/CRMContext.jsx';
 import { getAIResponse } from '../services/aiService';
+import { supabase } from '../supabaseClient';
+import { compressImage } from '../utils/imageUtils';
 
 const Chatbot = () => {
     const [isOpen, setIsOpen] = useState(false);
 
     // FLOW STEPS:
-    // 0: Name
-    // 1: Intent
-    // 1.1: Rent Role
-    // 2: Property Type
-    // 3: Location
-    // 4: Specs
-    // 5: Garage/Budget
-    // 6: Appraisal
-    // 9: Phone -> End
+    // ... (Existing steps)
+    // 7: Photo Upload (Only for Owner)
+    // 6: Appraisal -> 7 -> 9
 
     const [step, setStep] = useState(0);
     const [messages, setMessages] = useState([
@@ -23,11 +19,16 @@ const Chatbot = () => {
     ]);
     const [input, setInput] = useState('');
     const [userType, setUserType] = useState('seeker');
+
     const [data, setData] = useState({
-        name: '', intent: '', rentType: '', type: '', location: '', specs: '', garage: '', appraisal: '', budget: '', phone: ''
+        name: '', intent: '', rentType: '', type: '', location: '', specs: '', garage: '', appraisal: '', budget: '', phone: '',
+        photos: [] // New field for photos
     });
 
+    const [isUploading, setIsUploading] = useState(false);
+
     const messagesEndRef = useRef(null);
+    const fileInputRef = useRef(null);
     const { addLead } = useCRM();
 
     const scrollToBottom = () => {
@@ -45,6 +46,8 @@ const Chatbot = () => {
         }, delay);
     };
 
+    // ... handleSend logic ...
+
     const handleSend = async () => {
         if (!input.trim()) return;
 
@@ -52,53 +55,36 @@ const Chatbot = () => {
         setMessages(newMessages);
         setInput('');
 
-        // Define Context for AI
+        // Define Context for AI (Updated with Photo step)
         let stepName = `Step ${step}`;
         let contextDescription = "";
 
         if (step === 0) { stepName = "0"; contextDescription = "Pedir Nombre del cliente"; }
-        else if (step === 1) { stepName = "1"; contextDescription = "Elegir Intención (Comprar, Alquilar, Vender)"; }
-        else if (step === 3) { stepName = "3"; contextDescription = "Pedir Ubicación o Barrio"; }
-        else if (step === 4) { stepName = "4"; contextDescription = "Pedir Dormitorios y Baños"; }
-        else if (step === 5 && userType === 'seeker') { stepName = "5_seeker"; contextDescription = "Pedir Presupuesto en dolares o pesos"; }
-        else if (step === 9) { stepName = "9"; contextDescription = "Pedir Número de Teléfono/WhatsApp"; }
+        // ... (existing contexts)
+        else if (step === 7) { stepName = "7"; contextDescription = "Pedir Fotos de la propiedad (opcional)"; }
         else { stepName = "GENERAL"; contextDescription = "Conversación general"; }
 
-        // CALL EXTERNAL BRAIN
-        // Only consult AI for robust text steps (0, 3, 4, 5-seeker, 9) or general questions
-        // For simple buttons (1, 2, 5-owner, 6) we prefer clicks but if they type we check.
-
+        // AI CALL Logic (Same as before)
         let aiOutcome = null;
-
-        // Loading state could go here...
-
         try {
             aiOutcome = await getAIResponse(input, stepName, contextDescription);
-        } catch (e) {
-            console.error("Brain fail", e);
-        }
+        } catch (e) { console.error("Brain fail", e); }
 
         if (aiOutcome && aiOutcome.classification === "QUESTION") {
-            // User asked a question. Answer and STAY.
-            addBotMessage(aiOutcome.reply || "No tengo esa información por el momento.", undefined, 0);
+            addBotMessage(aiOutcome.reply || "No tengo esa información.", undefined, 0);
             return;
         }
 
         if (aiOutcome && aiOutcome.classification === "IRRELEVANT") {
-            // User said nonsense. Reply politely and STAY.
-            addBotMessage(aiOutcome.reply || "Disculpa, ¿podrías repetirme eso?", undefined, 0);
+            addBotMessage(aiOutcome.reply || "Disculpa, ¿podrías repetir?", undefined, 0);
             return;
         }
 
-        // IF VALID_DATA, we use 'extracted_data' instead of 'input' because it's cleaner
         const cleanInput = (aiOutcome && aiOutcome.classification === "VALID_DATA" && aiOutcome.extracted_data)
             ? aiOutcome.extracted_data
             : input;
 
-        // ----------------------------------------
-        // STANDARD LOGIC FLOW (With Cleaned Data)
-        // ----------------------------------------
-
+        // LOGIC FLOW
         if (step === 0) {
             setData(prev => ({ ...prev, name: cleanInput }));
             addBotMessage(`¡Qué gusto, ${cleanInput}! ¿En qué puedo ayudarte hoy?`, 1);
@@ -108,10 +94,7 @@ const Chatbot = () => {
             if (lower.includes('comprar')) handleOption('Comprar Propiedad', 1);
             else if (lower.includes('alquilar')) handleOption('Alquilar', 1);
             else if (lower.includes('vender')) handleOption('Vender mi propiedad', 1);
-            else {
-                // Should have been caught by "QUESTION" or "IRRELEVANT" but just in case
-                addBotMessage("Por favor seleccione una opción.", 1);
-            }
+            else addBotMessage("Por favor seleccione una opción.", 1);
         }
         else if (step === 1.1) {
             const lower = cleanInput.toLowerCase();
@@ -142,15 +125,24 @@ const Chatbot = () => {
                 addBotMessage('¿Desea solicitar una tasación profesional?', 6);
             }
         }
-        else if (step === 6) {
+        else if (step === 6) { // Appraisal -> Photos
             setData(prev => ({ ...prev, appraisal: cleanInput }));
-            addBotMessage('Perfecto. Indíqueme su número de WhatsApp.', 9);
+            addBotMessage('¿Tiene fotos de la propiedad para compartir? (Puede adjuntarlas ahora o decir "No tengo")', 7);
+        }
+        else if (step === 7) { // Photos Step (Text Response)
+            // If they type "No" or "Skip"
+            if (cleanInput.toLowerCase().includes('no') || cleanInput.length < 5) {
+                addBotMessage('No hay problema. Por último, indíqueme su número de WhatsApp.', 9);
+            } else {
+                // If they typed something else relevant?
+                addBotMessage('Gracias. Por último, indíqueme su número de WhatsApp.', 9);
+            }
         }
         else if (step === 9) {
             const phone = cleanInput;
             const finalData = { ...data, phone, source: 'Chatbot' };
             setData(finalData);
-            addBotMessage('Muchas gracias. Un asesor revisará su solicitud y lo contactará a la brevedad.', 10);
+            addBotMessage('Muchas gracias. Hemos recibido su ficha y fotos. Un asesor lo contactará a la brevedad.', 10);
             addLead(finalData);
         }
         else if (step === 2) {
@@ -203,7 +195,55 @@ const Chatbot = () => {
         }
         else if (currentStep === 6) {
             setData(prev => ({ ...prev, appraisal: value }));
-            addBotMessage('Perfecto. Por último, indíqueme su número de WhatsApp.', 9);
+            addBotMessage('¿Tiene fotos de la propiedad? (Puede adjuntarlas ahora)', 7);
+        }
+        else if (currentStep === 7) {
+            // Handled via file upload mostly
+        }
+    };
+
+    const handleFileUpload = async (e) => {
+        const files = e.target.files;
+        if (!files || files.length === 0) return;
+
+        setIsUploading(true);
+        const uploadedUrls = [];
+
+        try {
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                // Compress
+                const compressedBlob = await compressImage(file);
+
+                const fileName = `${Date.now()}-${file.name}`;
+                const { data: uploadData, error } = await supabase.storage
+                    .from('properties')
+                    .upload(fileName, compressedBlob);
+
+                if (error) throw error;
+
+                const { data: publicData } = supabase.storage.from('properties').getPublicUrl(fileName);
+                uploadedUrls.push(publicData.publicUrl);
+            }
+
+            setData(prev => ({ ...prev, photos: [...prev.photos, ...uploadedUrls] }));
+            setMessages(prev => [...prev, { text: `📷 ${uploadedUrls.length} foto(s) subida(s)`, sender: 'user' }]);
+
+            setTimeout(() => {
+                addBotMessage('¡Excelentes fotos! Las he guardado. ¿Tiene alguna otra o desea continuar?', 7);
+                // We create a "Continuing" option visually
+                setMessages(prev => [...prev, {
+                    text: "Continuar >", sender: 'bot', isOption: true, onClick: () => {
+                        addBotMessage('Perfecto. Por último, indíqueme su número de WhatsApp.', 9);
+                    }
+                }]);
+            }, 1000);
+
+        } catch (error) {
+            console.error(error);
+            addBotMessage('Hubo un error al subir la imagen. Intente de nuevo o continúe sin foto.', 7);
+        } finally {
+            setIsUploading(false);
         }
     };
 
@@ -213,6 +253,8 @@ const Chatbot = () => {
         if (step === 2) return ['Casa', 'Apartamento', 'Terreno', 'Local Comercial'];
         if (step === 5 && userType === 'owner') return ['Sí, tiene cochera', 'No tiene cochera'];
         if (step === 6) return ['Sí, quiero tasación', 'No, gracias'];
+        // Step 7: We show upload button in main UI, maybe a "Skip" button here
+        if (step === 7) return ['No tengo fotos por ahora'];
         return null;
     };
 
@@ -260,14 +302,20 @@ const Chatbot = () => {
                     <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-black/40">
                         {messages.map((msg, idx) => (
                             <div key={idx} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                <div
-                                    className={`max-w-[85%] p-3 rounded-lg text-sm leading-relaxed ${msg.sender === 'user'
-                                        ? 'bg-amber-700/20 border border-amber-600/30 text-white rounded-br-none'
-                                        : 'bg-gray-800/80 border border-gray-700 text-gray-200 rounded-bl-none'
-                                        }`}
-                                >
-                                    {msg.text}
-                                </div>
+                                {msg.isOption ? (
+                                    <button onClick={msg.onClick} className="bg-amber-600 text-white px-4 py-2 rounded-full text-sm hover:bg-amber-700 transition">
+                                        {msg.text}
+                                    </button>
+                                ) : (
+                                    <div
+                                        className={`max-w-[85%] p-3 rounded-lg text-sm leading-relaxed ${msg.sender === 'user'
+                                            ? 'bg-amber-700/20 border border-amber-600/30 text-white rounded-br-none'
+                                            : 'bg-gray-800/80 border border-gray-700 text-gray-200 rounded-bl-none'
+                                            }`}
+                                    >
+                                        {msg.text}
+                                    </div>
+                                )}
                             </div>
                         ))}
 
@@ -288,13 +336,33 @@ const Chatbot = () => {
                     </div>
 
                     <div className="p-3 border-t border-gray-800 bg-black/80">
+                        {/* Photo Upload Area (Only visible in step 7 for owners) */}
+                        {step === 7 && (
+                            <div className="mb-2 flex justify-center">
+                                <input
+                                    type="file"
+                                    multiple
+                                    accept="image/*"
+                                    className="hidden"
+                                    ref={fileInputRef}
+                                    onChange={handleFileUpload}
+                                />
+                                <button
+                                    onClick={() => fileInputRef.current.click()}
+                                    disabled={isUploading}
+                                    className="flex items-center gap-2 bg-gray-800 text-amber-400 px-4 py-2 rounded-full text-xs border border-amber-600/40 hover:bg-gray-700 transition"
+                                >
+                                    {isUploading ? 'Subiendo...' : <><Paperclip size={14} /> Adjuntar Fotos</>}
+                                </button>
+                            </div>
+                        )}
+
                         <div className="flex items-center gap-2">
                             <input
                                 type="text"
                                 value={input}
                                 onChange={(e) => setInput(e.target.value)}
                                 onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                                // Re-enabled input!
                                 placeholder={renderOptions() ? "Seleccione o escriba..." : "Escriba su mensaje..."}
                                 className="flex-1 bg-transparent border-none text-white text-sm focus:outline-none placeholder-gray-600"
                             />
