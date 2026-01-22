@@ -5,9 +5,9 @@ const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-
 
 const KNOWLEDGE_BASE = `
 EMPRESA: Inmobiliaria Destino Abril.
-SERVICIOS: Venta, Alquiler, Tasaciones.
-UBICACIÓN: Montevideo, Uruguay.
-GARANTÍAS: Aceptamos ANDA, Contaduría (CGN), Porto Seguro, Sura.
+MODELO: Digital (Sin oficinas físicas). Firmas en Escribanía/Propiedad.
+FILOSOFÍA: Atención personalizada con IA. Pocas propiedades, mucha dedicación.
+GARANTÍAS: ANDA, CGN, Porto, Sura.
 `;
 
 // Direct Browser Fetch to Google (The "Parachute")
@@ -15,7 +15,7 @@ const getDirectFromGoogle = async (message, step, context) => {
     console.log("🪂 Using Direct Google API Fallback");
     try {
         const systemPrompt = `
-        ACT AS: "Abril", chatbot inmobiliario.
+        ACT AS: "Abril", IA de Destino Abril.
         KNOWLEDGE: ${KNOWLEDGE_BASE}
         CONTEXT: Step "${step}" (${context}). User said: "${message}".
         
@@ -23,9 +23,9 @@ const getDirectFromGoogle = async (message, step, context) => {
         Format: { "classification": "VALID_DATA"|"QUESTION"|"IRRELEVANT", "reply": "...", "extracted_data": "..." }
         
         RULES:
-        - VALID_DATA: Direct answer to the current step.
-        - QUESTION: User asks something. Answer in 'reply'.
-        - IRRELEVANT: Nonsense/Greeting. Polite reply.
+        - VALID_DATA: Direct answer.
+        - QUESTION: Explain digital model/exclusivity if asked.
+        - DEEP DISCOVERY: If user talks about needs, you can classify as QUESTION to ask follow-ups (lifestyle, security, family) before accepting data, unless data is very complete.
         `;
 
         const response = await fetch(API_URL, {
