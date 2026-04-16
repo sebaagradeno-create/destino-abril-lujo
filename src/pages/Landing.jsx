@@ -1,9 +1,20 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useCRM } from '../context/CRMContext.jsx';
-import { ArrowRight, Star, Instagram, Facebook, Twitter, Share2 } from 'lucide-react';
+import { ArrowRight, Star, Instagram, Facebook, Twitter, Share2, Send, CheckCircle } from 'lucide-react';
 
 const Landing = () => {
-    const { properties } = useCRM();
+    const { properties, addLead } = useCRM();
+    const [form, setForm] = useState({ name: '', phone: '', intent: '', message: '' });
+    const [formSent, setFormSent] = useState(false);
+    const [formSending, setFormSending] = useState(false);
+
+    const handleFormSubmit = async (e) => {
+        e.preventDefault();
+        setFormSending(true);
+        await addLead({ ...form, source: 'Formulario Web', type: '', location: '', specs: '', garage: '', appraisal: '', photos: [] });
+        setFormSent(true);
+        setFormSending(false);
+    };
 
     return (
         <div className="min-h-screen bg-black text-white selection:bg-amber-500 selection:text-black pt-20">
@@ -110,6 +121,84 @@ const Landing = () => {
                             </a>
                         </div>
                     </div>
+                </div>
+            </section>
+
+            {/* Formulario de Contacto */}
+            <section className="py-24 bg-black" id="contacto">
+                <div className="max-w-3xl mx-auto px-6">
+                    <div className="text-center mb-14">
+                        <span className="text-amber-500 tracking-[0.3em] uppercase text-xs font-body">Contacto directo</span>
+                        <h2 className="text-3xl md:text-4xl font-header mt-3 mb-4">Hablemos de su <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#D4AF37] to-[#F4DF4E]">propiedad</span></h2>
+                        <div className="h-px w-16 bg-[#D4AF37] mx-auto"></div>
+                    </div>
+
+                    {formSent ? (
+                        <div className="flex flex-col items-center gap-4 py-16 text-center">
+                            <CheckCircle size={52} className="text-[#D4AF37]" />
+                            <h3 className="text-2xl font-header text-white">¡Mensaje recibido!</h3>
+                            <p className="text-gray-400 max-w-sm">Un asesor de Destino Abril se pondrá en contacto con usted a la brevedad.</p>
+                        </div>
+                    ) : (
+                        <form onSubmit={handleFormSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="flex flex-col gap-2">
+                                <label className="text-xs uppercase tracking-widest text-gray-500">Nombre completo *</label>
+                                <input
+                                    required
+                                    type="text"
+                                    value={form.name}
+                                    onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
+                                    placeholder="Juan García"
+                                    className="bg-[#111] border border-gray-800 text-white px-4 py-3 rounded-sm focus:border-[#D4AF37] focus:outline-none transition-colors placeholder-gray-700"
+                                />
+                            </div>
+                            <div className="flex flex-col gap-2">
+                                <label className="text-xs uppercase tracking-widest text-gray-500">WhatsApp *</label>
+                                <input
+                                    required
+                                    type="text"
+                                    value={form.phone}
+                                    onChange={e => setForm(p => ({ ...p, phone: e.target.value }))}
+                                    placeholder="+598 99 000 000"
+                                    className="bg-[#111] border border-gray-800 text-white px-4 py-3 rounded-sm focus:border-[#D4AF37] focus:outline-none transition-colors placeholder-gray-700"
+                                />
+                            </div>
+                            <div className="flex flex-col gap-2">
+                                <label className="text-xs uppercase tracking-widest text-gray-500">¿Qué le interesa?</label>
+                                <select
+                                    value={form.intent}
+                                    onChange={e => setForm(p => ({ ...p, intent: e.target.value }))}
+                                    className="bg-[#111] border border-gray-800 text-white px-4 py-3 rounded-sm focus:border-[#D4AF37] focus:outline-none transition-colors"
+                                >
+                                    <option value="">Seleccionar...</option>
+                                    <option value="Comprar">Comprar propiedad</option>
+                                    <option value="Alquilar">Alquilar propiedad</option>
+                                    <option value="Vender">Vender mi propiedad</option>
+                                    <option value="Tasacion">Tasación</option>
+                                    <option value="Inversión">Inversión</option>
+                                </select>
+                            </div>
+                            <div className="flex flex-col gap-2">
+                                <label className="text-xs uppercase tracking-widest text-gray-500">Mensaje</label>
+                                <input
+                                    type="text"
+                                    value={form.message}
+                                    onChange={e => setForm(p => ({ ...p, message: e.target.value }))}
+                                    placeholder="Zona, presupuesto, detalles..."
+                                    className="bg-[#111] border border-gray-800 text-white px-4 py-3 rounded-sm focus:border-[#D4AF37] focus:outline-none transition-colors placeholder-gray-700"
+                                />
+                            </div>
+                            <div className="md:col-span-2 flex justify-end mt-2">
+                                <button
+                                    type="submit"
+                                    disabled={formSending}
+                                    className="btn-primary flex items-center gap-2 disabled:opacity-60"
+                                >
+                                    {formSending ? 'Enviando...' : <><Send size={16} /> Enviar consulta</>}
+                                </button>
+                            </div>
+                        </form>
+                    )}
                 </div>
             </section>
 

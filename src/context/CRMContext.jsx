@@ -36,15 +36,36 @@ export const CRMProvider = ({ children }) => {
     }, []);
 
     const addLead = async (lead) => {
-        // Optimistic update
+        // Optimistic update en UI
         const tempId = Date.now();
-        const displayLead = { ...lead, id: tempId, created_at: new Date().toISOString() }; // UI needs created_at/date
+        const displayLead = { ...lead, id: tempId, created_at: new Date().toISOString() };
         setLeads((prev) => [displayLead, ...prev]);
 
-        // Database Insert
-        const { error } = await supabase
-            .from('leads')
-            .insert([{
+        // Enviar a n8n — guarda en PostgreSQL y notifica Telegram
+        try {
+            await fetch('https://n8n.automatizameuy.com/webhook/destino-abril-lead', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: lead.name,
+                    intent: lead.intent,
+                    phone: lead.phone,
+                    source: lead.source || 'Chatbot Web',
+                    type: lead.type,
+                    location: lead.location,
+                    specs: lead.specs,
+                    garage: lead.garage,
+                    appraisal: lead.appraisal,
+                    photos: lead.photos || []
+                })
+            });
+        } catch (e) {
+            console.error("Error enviando lead a n8n:", e);
+        }
+
+        // Supabase como backup secundario
+        try {
+            await supabase.from('leads').insert([{
                 name: lead.name,
                 intent: lead.intent,
                 phone: lead.phone,
@@ -55,10 +76,8 @@ export const CRMProvider = ({ children }) => {
                 garage: lead.garage,
                 appraisal: lead.appraisal
             }]);
-
-        if (error) {
-            console.error("Error saving lead:", error);
-            // Optionally rollback here
+        } catch (e) {
+            console.error("Error Supabase:", e);
         }
     };
 
