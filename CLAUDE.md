@@ -41,8 +41,44 @@ Chatbot/Formulario → POST `https://n8n.automatizameuy.com/webhook/destino-abri
 - URL: `https://hxskblwcxgaosafxbygb.supabase.co`
 - Tabla: `leads`
 
+## Estrategia de Marketing (MAESTRA)
+
+**Filosofía Central:** Conversión directa, no engagement vano.
+
+**Regla de los 5 Minutos:** Lead sin respuesta en 5 min = 80% menos conversión → Automatizar respuestas.
+
+**Sistema 10/30 (Meta Ads):**
+- 10 ángulos estratégicos por campaña
+- 3 creatives por ángulo = 30 variaciones
+- No segmentar por intereses, solo por contenido
+- Dejar 50 conversiones antes de modificar
+
+**Estructura de Contenido 70/30:**
+- 70% → Problema/Dolor del cliente
+- 30% → Solución
+
+**Calendario 30 días:**
+- 50% Contenido de Problema
+- 30% Contenido de Solución + Tips
+- 10% Contenido de Producto (cómo lo hacemos)
+- 10% Mentalidad/Valores
+
+**Para Destino Abril — OATF (Oferta Amigable Tráfico Frío):**
+1. **Resultado Soñado:** Vender rápido al mejor precio (o encontrar casa ideal)
+2. **Percepción de Realización:** Testimonios/casos de éxito constantes
+3. **Reducción de Esfuerzo:** "Nosotros manejamos papeleo y visitas"
+4. **Optimización del Tiempo:** Mostrar promedio real de cierre
+
+**Lead Magnet:** Gancho de baja fricción
+- Ej: "Auditoría de Perfil Inmobiliario Gratis"
+
+**Reels/Videos:** 10 ángulos x 3 creatives = 30 variaciones
+
+---
+
 ## Reglas
 - Siempre build + deploy después de cambios en src/
 - Haiku para búsquedas y preguntas simples
 - Sonnet para código nuevo y sistemas
 - No tocar node_modules ni .git
+- Contenido alineado con Estrategia Maestra (ver arriba)
