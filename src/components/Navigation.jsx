@@ -8,10 +8,10 @@ const Navigation = () => {
 
     return (
         <nav className="fixed top-0 w-full z-40 bg-black/90 backdrop-blur-md border-b border-white/5 h-20 flex items-center justify-between px-6 md:px-12 transition-all duration-300">
-            <div className="flex items-center gap-2">
-                <Link to="/" className="hover:opacity-80 transition-opacity flex flex-col">
-                    <img src="/logo.jpg" alt="Destino Abril" className="h-16 w-auto object-contain" />
-                    <span className="text-[10px] text-amber-500 tracking-widest text-center mt-[-5px]">v2.0 AI</span>
+            <div className="flex items-center gap-4">
+                <Link to="/" className="hover:opacity-80 transition-opacity flex items-center gap-3">
+                    <img src="/assets/images/logo.jpeg" alt="Destino Abril" className="h-14 w-14 object-cover rounded-full" style={{ mixBlendMode: 'lighten' }} />
+                    <span className="text-[#D4AF37] font-serif text-xl tracking-wide hidden md:block">Destino Abril</span>
                 </Link>
             </div>
 

@@ -1,9 +1,16 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useCRM } from '../context/CRMContext.jsx';
-import { ArrowRight, Star, Instagram, Facebook, Twitter, Share2, Send, CheckCircle } from 'lucide-react';
+import { ArrowRight, Star, Instagram, Facebook, Twitter, Share2, Send, CheckCircle, BedDouble, Bath, Maximize2, MapPin } from 'lucide-react';
+
+const formatPrecio = (precio, moneda) => {
+    if (!precio) return 'Consultar';
+    const sym = moneda === 'UYU' ? '$' : 'U$S';
+    return `${sym} ${precio.toLocaleString('es-UY')}`;
+};
 
 const Landing = () => {
-    const { properties, addLead } = useCRM();
+    const { featuredProperties, addLead } = useCRM();
     const [form, setForm] = useState({ name: '', phone: '', intent: '', message: '' });
     const [formSent, setFormSent] = useState(false);
     const [formSending, setFormSending] = useState(false);
@@ -34,9 +41,9 @@ const Landing = () => {
                         Propiedades de lujo, atención personalizada y la llave a su nuevo estilo de vida en Uruguay.
                     </p>
                     <div className="flex justify-center gap-4">
-                        <button className="btn-primary group flex items-center gap-2">
+                        <Link to="/propiedades" className="btn-primary group flex items-center gap-2">
                             Ver Propiedades <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
-                        </button>
+                        </Link>
                         <button
                             onClick={() => {
                                 navigator.clipboard.writeText(window.location.href);
@@ -57,34 +64,45 @@ const Landing = () => {
                         <h2 className="text-3xl md:text-4xl font-header mb-2">Propiedades Destacadas</h2>
                         <div className="h-1 w-20 bg-[#D4AF37]"></div>
                     </div>
-                    <button className="hidden md:flex items-center gap-2 text-[#D4AF37] hover:text-white transition-colors uppercase text-xs tracking-widest">
+                    <Link to="/propiedades" className="hidden md:flex items-center gap-2 text-[#D4AF37] hover:text-white transition-colors uppercase text-xs tracking-widest">
                         Ver todo <ArrowRight size={14} />
-                    </button>
+                    </Link>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                    {properties.map((prop) => (
+                    {(featuredProperties.length > 0 ? featuredProperties : [null, null, null]).map((prop, i) => (
+                        prop ? (
                         <div key={prop.id} className="group cursor-pointer">
-                            <div className="relative h-64 overflow-hidden mb-4 rounded-sm">
-                                <div className="absolute top-4 left-4 bg-black/70 backdrop-blur-sm px-3 py-1 text-xs uppercase tracking-wider text-white z-10">
-                                    {prop.type}
-                                </div>
-                                {/* Placeholder for property images */}
-                                <div className={`w-full h-full bg-gray-900 group-hover:scale-105 transition-transform duration-700 bg-cover bg-center`}
-                                    style={{ backgroundImage: `url('https://source.unsplash.com/random/800x600?luxury,house,${prop.id}')` }}
-                                >
-                                    {/* Fallback gradient if image fails */}
-                                    <div className="w-full h-full bg-gradient-to-br from-gray-800 to-black opacity-50"></div>
-                                </div>
+                            <div className="relative h-64 overflow-hidden mb-4">
+                                <span className={`absolute top-4 left-4 z-10 px-2 py-0.5 text-xs uppercase tracking-wider font-bold ${prop.tipo_operacion === 'venta' ? 'bg-amber-600 text-black' : 'bg-emerald-700 text-white'}`}>
+                                    {prop.tipo_operacion}
+                                </span>
+                                {prop.imagen_principal ? (
+                                    <img src={prop.imagen_principal} alt={prop.titulo} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" onError={e => { e.target.style.display='none'; }} />
+                                ) : (
+                                    <div className="w-full h-full bg-gradient-to-br from-gray-800 to-black flex items-center justify-center text-5xl">🏠</div>
+                                )}
                             </div>
                             <div className="flex justify-between items-start">
-                                <div>
-                                    <h3 className="text-xl font-header mb-1 group-hover:text-[#D4AF37] transition-colors">{prop.title}</h3>
-                                    <p className="text-gray-500 text-sm">{prop.status}</p>
+                                <div className="flex-1 mr-2">
+                                    <h3 className="text-base font-header mb-1 group-hover:text-[#D4AF37] transition-colors line-clamp-1">{prop.titulo}</h3>
+                                    {prop.barrio && <p className="text-gray-500 text-xs flex items-center gap-1"><MapPin size={10}/>{prop.barrio}</p>}
+                                    <div className="flex gap-3 mt-1 text-gray-500 text-xs">
+                                        {prop.dormitorios != null && <span className="flex items-center gap-1"><BedDouble size={10}/>{prop.dormitorios}</span>}
+                                        {prop.banios != null && <span className="flex items-center gap-1"><Bath size={10}/>{prop.banios}</span>}
+                                        {prop.superficie_total && <span className="flex items-center gap-1"><Maximize2 size={10}/>{prop.superficie_total}m²</span>}
+                                    </div>
                                 </div>
-                                <span className="text-[#D4AF37] font-bold">{prop.price}</span>
+                                <span className="text-[#D4AF37] font-bold text-sm whitespace-nowrap">{formatPrecio(prop.precio, prop.moneda)}</span>
                             </div>
                         </div>
+                        ) : (
+                        <div key={i} className="animate-pulse">
+                            <div className="h-64 bg-gray-900 mb-4"></div>
+                            <div className="h-4 bg-gray-800 rounded w-3/4 mb-2"></div>
+                            <div className="h-3 bg-gray-800 rounded w-1/2"></div>
+                        </div>
+                        )
                     ))}
                 </div>
             </section>

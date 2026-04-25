@@ -81,14 +81,17 @@ export const CRMProvider = ({ children }) => {
         }
     };
 
-    const [properties] = useState([
-        { id: 1, title: 'Penthouse en Punta del Este', price: 'USD 850,000', type: 'Venta', status: 'Disponible' },
-        { id: 2, title: 'Casa en Carrasco', price: 'USD 4,500/mes', type: 'Alquiler', status: 'Disponible' },
-        { id: 3, title: 'Apartamento en Pocitos', price: 'USD 220,000', type: 'Venta', status: 'Reservado' },
-    ]);
+    const [featuredProperties, setFeaturedProperties] = useState([]);
+
+    useEffect(() => {
+        fetch('https://n8n.automatizameuy.com/webhook/propiedades?destacadas=true&limite=3')
+            .then(r => r.json())
+            .then(data => { if (data.propiedades?.length) setFeaturedProperties(data.propiedades); })
+            .catch(() => {});
+    }, []);
 
     return (
-        <CRMContext.Provider value={{ leads, addLead, properties }}>
+        <CRMContext.Provider value={{ leads, addLead, featuredProperties }}>
             {children}
         </CRMContext.Provider>
     );
