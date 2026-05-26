@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useCRM } from '../context/CRMContext.jsx';
 import { User, Phone, Star, Home, BedDouble, Bath, MapPin, LogOut, RefreshCw, Search, MessageCircle, TrendingUp, Users, BarChart2, ExternalLink } from 'lucide-react';
-import { supabase } from '../supabaseClient';
 import { useNavigate } from 'react-router-dom';
 
 const CRM_WEBHOOK  = 'https://n8n.automatizameuy.com/webhook/crm-update-propiedad';
@@ -595,7 +594,6 @@ const CRM = () => {
 
   const handleLogout = async () => {
     sessionStorage.removeItem('auth_token');
-    await supabase.auth.signOut().catch(() => {});
     navigate('/login');
   };
 

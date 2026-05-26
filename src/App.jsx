@@ -8,23 +8,15 @@ import CRM from './pages/CRM';
 import Login from './pages/Login';
 import Propiedades from './pages/Propiedades';
 import Propiedad from './pages/Propiedad';
-import { supabase } from './supabaseClient';
 
-// Protected Route: acepta sesión por password O por OAuth de Supabase
 const ProtectedRoute = ({ children }) => {
   const [checking, setChecking] = useState(true);
-  const [allowed, setAllowed] = useState(false);
+  const [allowed, setAllowed]   = useState(false);
 
   useEffect(() => {
     const token = sessionStorage.getItem('auth_token');
-    if (token) { setAllowed(true); setChecking(false); return; }
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) {
-        sessionStorage.setItem('auth_token', 'validated');
-        setAllowed(true);
-      }
-      setChecking(false);
-    });
+    setAllowed(token === 'validated');
+    setChecking(false);
   }, []);
 
   if (checking) return <div className="min-h-screen bg-black" />;
@@ -32,29 +24,27 @@ const ProtectedRoute = ({ children }) => {
   return children;
 };
 
-// Layout wrapper
 const Layout = ({ children }) => {
   const location = useLocation();
-  const isHybridMode = location.pathname === '/' || location.pathname === '/index.html';
+  const isPublic  = location.pathname === '/' || location.pathname === '/index.html';
+  const isAdmin   = location.pathname === '/crm' || location.pathname === '/login';
 
   useEffect(() => {
-    // Hide static HTML elements if we are in the CRM/Login routes
     const staticElements = document.querySelectorAll('nav#navbar, header#inicio, section, footer');
-    if (!isHybridMode) {
+    if (!isPublic) {
       staticElements.forEach(el => el.style.display = 'none');
       document.body.style.background = '#000';
     } else {
       staticElements.forEach(el => el.style.display = '');
     }
-  }, [isHybridMode]);
+  }, [isPublic]);
 
   return (
-    <div className={!isHybridMode ? "bg-black min-h-screen text-white font-body selection:bg-amber-500 selection:text-black" : ""}>
-      {/* Show React nav only in CRM/Login */}
-      {!isHybridMode && <Navigation />}
+    <div className={!isPublic ? 'bg-black min-h-screen text-white font-body selection:bg-amber-500 selection:text-black' : ''}>
+      {!isPublic && !isAdmin && <Navigation />}
       {children}
-      {/* Chatbot appears globally */}
-      <Chatbot />
+      {/* Chatbot solo en páginas públicas */}
+      {!isAdmin && <Chatbot />}
     </div>
   );
 };
@@ -65,10 +55,10 @@ function App() {
       <Router>
         <Layout>
           <Routes>
-            <Route path="/" element={<div />} />
+            <Route path="/"            element={<div />} />
             <Route path="/propiedades" element={<Propiedades />} />
             <Route path="/propiedad/:id" element={<Propiedad />} />
-            <Route path="/login" element={<Login />} />
+            <Route path="/login"       element={<Login />} />
             <Route
               path="/crm"
               element={

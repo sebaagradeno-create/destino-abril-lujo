@@ -1,48 +1,37 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
-import { supabase } from '../supabaseClient';
 
 const CRMContext = createContext();
 export const useCRM = () => useContext(CRMContext);
 
-const N8N_LEAD = 'https://n8n.automatizameuy.com/webhook/destino-abril-lead';
+const N8N_LEAD     = 'https://n8n.automatizameuy.com/webhook/destino-abril-lead';
+const N8N_LEADS    = 'https://n8n.automatizameuy.com/webhook/crm-leads-destino-abril';
+const N8N_PROPS    = 'https://n8n.automatizameuy.com/webhook/propiedades';
 
 export const CRMProvider = ({ children }) => {
-  const [leads, setLeads]               = useState([]);
+  const [leads, setLeads]                       = useState([]);
   const [featuredProperties, setFeaturedProperties] = useState([]);
 
-  // Cargar leads desde Supabase
+  // Cargar leads desde PostgreSQL vía n8n
   useEffect(() => {
-    const fetchLeads = async () => {
-      const { data, error } = await supabase
-        .from('leads')
-        .select('*')
-        .order('created_at', { ascending: false });
-      if (!error && data) setLeads(data);
-    };
-    fetchLeads();
-
-    // Realtime: nuevos leads en vivo
-    const channel = supabase
-      .channel('leads_updates')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'leads' }, (payload) => {
-        setLeads(prev => [payload.new, ...prev]);
+    fetch(N8N_LEADS, { cache: 'no-cache' })
+      .then(r => r.json())
+      .then(data => {
+        const list = Array.isArray(data) ? data : (data.leads || []);
+        if (list.length) setLeads(list);
       })
-      .subscribe();
-
-    return () => supabase.removeChannel(channel);
+      .catch(() => {});
   }, []);
 
-  // Propiedades destacadas para la landing — solo publicadas
+  // Propiedades destacadas para la landing
   const fetchFeatured = () => {
-    fetch(`https://n8n.automatizameuy.com/webhook/propiedades?estado=publicada&destacadas=true&limite=9`, { cache: 'no-cache' })
+    fetch(`${N8N_PROPS}?estado=publicada&destacadas=true&limite=9`, { cache: 'no-cache' })
       .then(r => r.json())
       .then(data => {
         const list = Array.isArray(data) ? (data[0]?.propiedades || []) : (data.propiedades || []);
-        // Si no hay destacadas, mostrar todas las publicadas
         if (list.length) {
           setFeaturedProperties(list);
         } else {
-          return fetch(`https://n8n.automatizameuy.com/webhook/propiedades?estado=publicada&limite=9`, { cache: 'no-cache' })
+          return fetch(`${N8N_PROPS}?estado=publicada&limite=9`, { cache: 'no-cache' })
             .then(r => r.json())
             .then(d => {
               const l = Array.isArray(d) ? (d[0]?.propiedades || []) : (d.propiedades || []);
@@ -56,7 +45,6 @@ export const CRMProvider = ({ children }) => {
   useEffect(() => { fetchFeatured(); }, []);
 
   const addLead = async (lead) => {
-    // Normalizar: soporta formato nuevo (phone + historial) y viejo (name, intent, specs...)
     const payload = {
       name:      lead.name     || null,
       phone:     lead.phone    || null,
@@ -76,11 +64,8 @@ export const CRMProvider = ({ children }) => {
     fetch(N8N_LEAD, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
     }).catch(() => {});
-
-    // Backup en Supabase
-    supabase.from('leads').insert([payload]).catch(() => {});
   };
 
   return (

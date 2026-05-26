@@ -104,7 +104,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const n8nWebhookUrl = 'https://n8n.automatizameuy.com/webhook/webhook-destino-abril';
 
             try {
-                console.log('Enviando lead a Destino Abril CRM:', leadData);
                 
                 const response = await fetch(n8nWebhookUrl, {
                     method: 'POST',
@@ -164,7 +163,9 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // 5. Cargar propiedades reales desde n8n
+    // 5. Cargar propiedades reales desde n8n (con escape XSS)
+    const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
     const loadProperties = async () => {
         const container = document.getElementById('properties-container');
         if (!container) return;
@@ -180,33 +181,36 @@ document.addEventListener('DOMContentLoaded', () => {
                     try { rest = typeof p.imagenes === 'string' ? JSON.parse(p.imagenes) : (Array.isArray(p.imagenes) ? p.imagenes : []); } catch {}
                     const all = pi ? [pi, ...rest.filter(u => u !== pi)] : rest;
                     const seen = new Set();
-                    return all.filter(u => { if (!u) return false; const k = u.replace(/-[A-Z](\\.jpg|\\.webp)$/i,''); if (seen.has(k)) return false; seen.add(k); return true; });
+                    return all.filter(u => { if (!u) return false; const k = u.replace(/-[A-Z](\.jpg|\.webp)$/i,''); if (seen.has(k)) return false; seen.add(k); return true; });
                 })();
-                const img = imgs[0] || '';
-                const precio = p.precio ? `${p.moneda === 'UYU' ? '$' : 'U$S'} ${Number(p.precio).toLocaleString('es-UY')}` : 'Consultar';
+                const img     = imgs[0] || '';
+                const precio  = p.precio ? `${p.moneda === 'UYU' ? '$' : 'U$S'} ${Number(p.precio).toLocaleString('es-UY')}` : 'Consultar';
                 const badgeCls = p.tipo_operacion === 'alquiler' ? ' alquiler' : '';
                 const badgeTxt = p.tipo_operacion === 'venta' ? 'Venta' : 'Alquiler';
-                const dorm = p.dormitorios != null ? `<span><i class="ph ph-bed"></i> ${p.dormitorios} Dorm</span>` : '';
-                const ban  = p.banios != null ? `<span><i class="ph ph-shower"></i> ${p.banios} Baños</span>` : '';
-                const sup  = p.superficie_total ? `<span><i class="ph ph-frame-corners"></i> ${p.superficie_total} m²</span>` : '';
+                const dorm = p.dormitorios != null ? `<span><i class="ph ph-bed"></i> ${Number(p.dormitorios)} Dorm</span>` : '';
+                const ban  = p.banios != null ? `<span><i class="ph ph-shower"></i> ${Number(p.banios)} Baños</span>` : '';
+                const sup  = p.superficie_total ? `<span><i class="ph ph-frame-corners"></i> ${Number(p.superficie_total)} m²</span>` : '';
+                const titulo = esc(p.titulo) || 'Propiedad sin título';
+                const barrio = esc(p.barrio);
+                const ciudad = p.ciudad ? ', ' + esc(p.ciudad) : '';
+                const imgTag = img ? `<img src="${esc(img)}" alt="${titulo}" loading="lazy" onerror="this.style.display='none'">` : '<div style="background:#111;width:100%;height:100%"></div>';
                 return `<article class="property-card reveal">
-                    <a href="/propiedad/${p.id}" style="text-decoration:none;color:inherit;display:block;">
+                    <a href="/propiedad/${Number(p.id)}" style="text-decoration:none;color:inherit;display:block;">
                         <div class="property-card-image">
                             <div class="property-badge${badgeCls}">${badgeTxt}</div>
-                            ${img ? `<img src="${img}" alt="${p.titulo||''}" onerror="this.style.display='none'">` : '<div style="background:#111;width:100%;height:100%"></div>'}
+                            ${imgTag}
                         </div>
                         <div class="property-card-body">
-                            <h3>${p.titulo || 'Propiedad sin título'}</h3>
-                            <div class="property-location"><i class="ph ph-map-pin"></i> ${p.barrio || ''}${p.ciudad ? ', '+p.ciudad : ''}</div>
+                            <h3>${titulo}</h3>
+                            <div class="property-location"><i class="ph ph-map-pin"></i> ${barrio}${ciudad}</div>
                             <div class="property-features">${dorm}${ban}${sup}</div>
-                            <div class="property-price"><div class="price">${precio}</div></div>
+                            <div class="property-price"><div class="price">${esc(precio)}</div></div>
                         </div>
                     </a>
                 </article>`;
             }).join('');
-            // Observer para animaciones reveal en las nuevas cards
             document.querySelectorAll('#properties-container .reveal').forEach(el => revealOnScroll.observe(el));
-        } catch(e) {
+        } catch {
             container.innerHTML = '<p style="grid-column:1/-1;text-align:center;color:#666;padding:40px;">Error al cargar propiedades.</p>';
         }
     };
