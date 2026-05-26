@@ -252,7 +252,7 @@ export default function Propiedad() {
             <div className="h-px bg-gray-800 my-4"></div>
             <div className="space-y-2 text-sm text-gray-400">
               {prop.tipo_propiedad && <p><span className="text-gray-600">Tipo:</span> {prop.tipo_propiedad}</p>}
-              {prop.fuente && <p><span className="text-gray-600">Fuente:</span> {prop.fuente}</p>}
+              <p><span className="text-gray-600">Fuente:</span> Destino Abril</p>
             </div>
           </div>
 
@@ -292,7 +292,7 @@ export default function Propiedad() {
 
             {/* WhatsApp directo */}
             <a
-              href={`https://wa.me/59897595464?text=${encodeURIComponent(`Hola, me interesa la propiedad: ${prop.titulo} (ID: ${prop.id})`)}`}
+              href={`https://wa.me/598096969947?text=${encodeURIComponent(`Hola, me interesa la propiedad: ${prop.titulo} (ID: ${prop.id})`)}`}
               target="_blank" rel="noopener noreferrer"
               className="mt-3 flex items-center justify-center gap-2 w-full border border-green-600 text-green-400 py-2.5 text-sm hover:bg-green-600 hover:text-white transition-all"
             >

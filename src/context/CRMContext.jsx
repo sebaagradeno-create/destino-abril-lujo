@@ -1,98 +1,91 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
-
-const CRMContext = createContext();
-
-export const useCRM = () => useContext(CRMContext);
-
 import { supabase } from '../supabaseClient';
 
+const CRMContext = createContext();
+export const useCRM = () => useContext(CRMContext);
+
+const N8N_LEAD = 'https://n8n.automatizameuy.com/webhook/destino-abril-lead';
+
 export const CRMProvider = ({ children }) => {
-    const [leads, setLeads] = useState([]);
+  const [leads, setLeads]               = useState([]);
+  const [featuredProperties, setFeaturedProperties] = useState([]);
 
-    useEffect(() => {
-        const fetchLeads = async () => {
-            const { data, error } = await supabase
-                .from('leads')
-                .select('*')
-                .order('created_at', { ascending: false });
+  // Cargar leads desde Supabase
+  useEffect(() => {
+    const fetchLeads = async () => {
+      const { data, error } = await supabase
+        .from('leads')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (!error && data) setLeads(data);
+    };
+    fetchLeads();
 
-            if (!error && data) setLeads(data);
-        };
+    // Realtime: nuevos leads en vivo
+    const channel = supabase
+      .channel('leads_updates')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'leads' }, (payload) => {
+        setLeads(prev => [payload.new, ...prev]);
+      })
+      .subscribe();
 
-        // Initial fetch
-        fetchLeads();
+    return () => supabase.removeChannel(channel);
+  }, []);
 
-        // Realtime subscription (Optional, but nice to have)
-        const channel = supabase
-            .channel('leads_updates')
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'leads' }, (payload) => {
-                setLeads((prev) => [payload.new, ...prev]);
-            })
-            .subscribe();
-
-        return () => {
-            supabase.removeChannel(channel);
-        };
-    }, []);
-
-    const addLead = async (lead) => {
-        // Optimistic update en UI
-        const tempId = Date.now();
-        const displayLead = { ...lead, id: tempId, created_at: new Date().toISOString() };
-        setLeads((prev) => [displayLead, ...prev]);
-
-        // Enviar a n8n — guarda en PostgreSQL y notifica Telegram
-        try {
-            await fetch('https://n8n.automatizameuy.com/webhook/destino-abril-lead', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    name: lead.name,
-                    intent: lead.intent,
-                    phone: lead.phone,
-                    source: lead.source || 'Chatbot Web',
-                    type: lead.type,
-                    location: lead.location,
-                    specs: lead.specs,
-                    garage: lead.garage,
-                    appraisal: lead.appraisal,
-                    photos: lead.photos || []
-                })
+  // Propiedades destacadas para la landing — solo publicadas
+  const fetchFeatured = () => {
+    fetch(`https://n8n.automatizameuy.com/webhook/propiedades?estado=publicada&destacadas=true&limite=9`, { cache: 'no-cache' })
+      .then(r => r.json())
+      .then(data => {
+        const list = Array.isArray(data) ? (data[0]?.propiedades || []) : (data.propiedades || []);
+        // Si no hay destacadas, mostrar todas las publicadas
+        if (list.length) {
+          setFeaturedProperties(list);
+        } else {
+          return fetch(`https://n8n.automatizameuy.com/webhook/propiedades?estado=publicada&limite=9`, { cache: 'no-cache' })
+            .then(r => r.json())
+            .then(d => {
+              const l = Array.isArray(d) ? (d[0]?.propiedades || []) : (d.propiedades || []);
+              if (l.length) setFeaturedProperties(l);
             });
-        } catch (e) {
-            console.error("Error enviando lead a n8n:", e);
         }
+      })
+      .catch(() => {});
+  };
 
-        // Supabase como backup secundario
-        try {
-            await supabase.from('leads').insert([{
-                name: lead.name,
-                intent: lead.intent,
-                phone: lead.phone,
-                source: lead.source,
-                type: lead.type,
-                location: lead.location,
-                specs: lead.specs,
-                garage: lead.garage,
-                appraisal: lead.appraisal
-            }]);
-        } catch (e) {
-            console.error("Error Supabase:", e);
-        }
+  useEffect(() => { fetchFeatured(); }, []);
+
+  const addLead = async (lead) => {
+    // Normalizar: soporta formato nuevo (phone + historial) y viejo (name, intent, specs...)
+    const payload = {
+      name:      lead.name     || null,
+      phone:     lead.phone    || null,
+      source:    lead.source   || 'Chatbot Web',
+      intent:    lead.intent   || null,
+      type:      lead.type     || null,
+      location:  lead.location || null,
+      specs:     lead.specs    || null,
+      appraisal: lead.appraisal|| null,
+      historial: lead.historial|| null,
     };
 
-    const [featuredProperties, setFeaturedProperties] = useState([]);
+    // Optimistic UI
+    setLeads(prev => [{ ...payload, id: Date.now(), created_at: new Date().toISOString() }, ...prev]);
 
-    useEffect(() => {
-        fetch('https://n8n.automatizameuy.com/webhook/propiedades?destacadas=true&limite=3')
-            .then(r => r.json())
-            .then(data => { if (data.propiedades?.length) setFeaturedProperties(data.propiedades); })
-            .catch(() => {});
-    }, []);
+    // Notificar a n8n (guarda en DB + Telegram)
+    fetch(N8N_LEAD, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).catch(() => {});
 
-    return (
-        <CRMContext.Provider value={{ leads, addLead, featuredProperties }}>
-            {children}
-        </CRMContext.Provider>
-    );
+    // Backup en Supabase
+    supabase.from('leads').insert([payload]).catch(() => {});
+  };
+
+  return (
+    <CRMContext.Provider value={{ leads, addLead, featuredProperties, refreshFeatured: fetchFeatured }}>
+      {children}
+    </CRMContext.Provider>
+  );
 };

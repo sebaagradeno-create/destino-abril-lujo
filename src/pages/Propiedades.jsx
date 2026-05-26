@@ -13,9 +13,17 @@ const formatPrecio = (precio, moneda) => {
 };
 
 const CardPropiedad = ({ prop }) => {
-  const imagenes = prop.imagen_principal
-    ? [prop.imagen_principal, ...(prop.imagenes || []).filter(i => i !== prop.imagen_principal)]
+  const rawImgs = prop.imagen_principal
+    ? [prop.imagen_principal, ...(prop.imagenes || [])]
     : (prop.imagenes || []);
+  const seenKeys = new Set();
+  const imagenes = rawImgs.filter(u => {
+    if (!u) return false;
+    const key = u.replace(/-[A-Z](?:\.jpg|\.webp)$/i, '').replace(/\?.*$/, '');
+    if (seenKeys.has(key)) return false;
+    seenKeys.add(key);
+    return true;
+  });
   const [imgIdx, setImgIdx] = useState(0);
 
   const prev = e => { e.preventDefault(); e.stopPropagation(); setImgIdx(i => (i - 1 + imagenes.length) % imagenes.length); };
@@ -140,6 +148,8 @@ export default function Propiedades() {
     precio_max: '',
     dorm: '',
     destacadas: false,
+    amoblado: false,
+    orden: '',
   });
   const [showFilters, setShowFilters] = useState(false);
   const [searchBarrio, setSearchBarrio] = useState('');
@@ -148,6 +158,7 @@ export default function Propiedades() {
     setLoading(true);
     try {
       const params = new URLSearchParams();
+      params.set('estado', 'publicada'); // portal público: solo publicadas
       if (f.tipo) params.set('tipo', f.tipo);
       if (f.tipo_prop) params.set('tipo_prop', f.tipo_prop);
       if (f.barrio) params.set('barrio', f.barrio);
@@ -155,6 +166,8 @@ export default function Propiedades() {
       if (f.precio_max) params.set('precio_max', f.precio_max);
       if (f.dorm) params.set('dorm', f.dorm);
       if (f.destacadas) params.set('destacadas', 'true');
+      if (f.amoblado)   params.set('amoblado', 'true');
+      if (f.orden)      params.set('orden', f.orden);
       params.set('limite', LIMIT);
       params.set('offset', offset);
 
@@ -179,12 +192,12 @@ export default function Propiedades() {
   };
 
   const clearFilters = () => {
-    setFilters({ tipo: '', tipo_prop: '', barrio: '', precio_min: '', precio_max: '', dorm: '', destacadas: false });
+    setFilters({ tipo: '', tipo_prop: '', barrio: '', precio_min: '', precio_max: '', dorm: '', destacadas: false, amoblado: false, orden: '' });
     setSearchBarrio('');
     setPage(0);
   };
 
-  const hasActiveFilters = Object.values(filters).some(v => v !== '' && v !== false);
+  const hasActiveFilters = Object.entries(filters).some(([k, v]) => k !== 'tipo' && v !== '' && v !== false);
   const totalPages = Math.ceil(total / LIMIT);
 
   return (
@@ -295,19 +308,37 @@ export default function Propiedades() {
               </select>
             </div>
 
+            {/* Orden */}
+            <div>
+              <label className="text-xs text-gray-500 uppercase tracking-widest block mb-2">Ordenar por</label>
+              <select
+                value={filters.orden}
+                onChange={e => applyFilter('orden', e.target.value)}
+                className="w-full bg-[#111] border border-gray-800 text-white text-sm px-3 py-2 focus:border-[#D4AF37] focus:outline-none"
+              >
+                <option value="">Relevancia</option>
+                <option value="precio_asc">Precio: menor primero</option>
+                <option value="precio_desc">Precio: mayor primero</option>
+                <option value="reciente">Más reciente</option>
+              </select>
+            </div>
+
             {/* Footer filtros */}
-            <div className="md:col-span-3 lg:col-span-5 flex items-center justify-between pt-2 border-t border-gray-800">
+            <div className="md:col-span-3 lg:col-span-6 flex flex-wrap items-center gap-4 pt-2 border-t border-gray-800">
               <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-400 hover:text-white">
-                <input
-                  type="checkbox"
-                  checked={filters.destacadas}
+                <input type="checkbox" checked={filters.destacadas}
                   onChange={e => applyFilter('destacadas', e.target.checked)}
-                  className="accent-[#D4AF37]"
-                />
+                  className="accent-[#D4AF37]" />
                 Solo destacadas
               </label>
+              <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-400 hover:text-white">
+                <input type="checkbox" checked={filters.amoblado}
+                  onChange={e => applyFilter('amoblado', e.target.checked)}
+                  className="accent-[#D4AF37]" />
+                Amoblado
+              </label>
               {hasActiveFilters && (
-                <button onClick={clearFilters} className="flex items-center gap-1 text-xs text-gray-500 hover:text-red-400 transition-colors">
+                <button onClick={clearFilters} className="ml-auto flex items-center gap-1 text-xs text-gray-500 hover:text-red-400 transition-colors">
                   <X size={12} /> Limpiar filtros
                 </button>
               )}

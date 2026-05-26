@@ -163,4 +163,52 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
+
+    // 5. Cargar propiedades reales desde n8n
+    const loadProperties = async () => {
+        const container = document.getElementById('properties-container');
+        if (!container) return;
+        try {
+            const res = await fetch('https://n8n.automatizameuy.com/webhook/propiedades?estado=publicada&limite=9', { cache: 'no-cache' });
+            const data = await res.json();
+            const raw = Array.isArray(data) ? (data[0]?.propiedades || []) : (data.propiedades || []);
+            if (!raw.length) { container.innerHTML = '<p style="grid-column:1/-1;text-align:center;color:#666;padding:40px;">No hay propiedades publicadas aún.</p>'; return; }
+            container.innerHTML = raw.map(p => {
+                const imgs = (() => {
+                    const pi = p.imagen_principal || '';
+                    let rest = [];
+                    try { rest = typeof p.imagenes === 'string' ? JSON.parse(p.imagenes) : (Array.isArray(p.imagenes) ? p.imagenes : []); } catch {}
+                    const all = pi ? [pi, ...rest.filter(u => u !== pi)] : rest;
+                    const seen = new Set();
+                    return all.filter(u => { if (!u) return false; const k = u.replace(/-[A-Z](\\.jpg|\\.webp)$/i,''); if (seen.has(k)) return false; seen.add(k); return true; });
+                })();
+                const img = imgs[0] || '';
+                const precio = p.precio ? `${p.moneda === 'UYU' ? '$' : 'U$S'} ${Number(p.precio).toLocaleString('es-UY')}` : 'Consultar';
+                const badgeCls = p.tipo_operacion === 'alquiler' ? ' alquiler' : '';
+                const badgeTxt = p.tipo_operacion === 'venta' ? 'Venta' : 'Alquiler';
+                const dorm = p.dormitorios != null ? `<span><i class="ph ph-bed"></i> ${p.dormitorios} Dorm</span>` : '';
+                const ban  = p.banios != null ? `<span><i class="ph ph-shower"></i> ${p.banios} Baños</span>` : '';
+                const sup  = p.superficie_total ? `<span><i class="ph ph-frame-corners"></i> ${p.superficie_total} m²</span>` : '';
+                return `<article class="property-card reveal">
+                    <a href="/propiedad/${p.id}" style="text-decoration:none;color:inherit;display:block;">
+                        <div class="property-card-image">
+                            <div class="property-badge${badgeCls}">${badgeTxt}</div>
+                            ${img ? `<img src="${img}" alt="${p.titulo||''}" onerror="this.style.display='none'">` : '<div style="background:#111;width:100%;height:100%"></div>'}
+                        </div>
+                        <div class="property-card-body">
+                            <h3>${p.titulo || 'Propiedad sin título'}</h3>
+                            <div class="property-location"><i class="ph ph-map-pin"></i> ${p.barrio || ''}${p.ciudad ? ', '+p.ciudad : ''}</div>
+                            <div class="property-features">${dorm}${ban}${sup}</div>
+                            <div class="property-price"><div class="price">${precio}</div></div>
+                        </div>
+                    </a>
+                </article>`;
+            }).join('');
+            // Observer para animaciones reveal en las nuevas cards
+            document.querySelectorAll('#properties-container .reveal').forEach(el => revealOnScroll.observe(el));
+        } catch(e) {
+            container.innerHTML = '<p style="grid-column:1/-1;text-align:center;color:#666;padding:40px;">Error al cargar propiedades.</p>';
+        }
+    };
+    loadProperties();
 });

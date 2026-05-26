@@ -1,78 +1,19 @@
-// CLIENT SIDE SERVICE (Zero-Dependency Version)
+const N8N_CHATBOT = 'https://n8n.automatizameuy.com/webhook/chatbot-destino-abril';
 
-const API_KEY = "AIzaSyClTbbC3T5o8ZzDEc2TohSzL0wdvQDpaoA";
-const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
-
-const KNOWLEDGE_BASE = `
-EMPRESA: Inmobiliaria Destino Abril.
-MODELO: Digital (Sin oficinas físicas). Firmas en Escribanía/Propiedad.
-FILOSOFÍA: Atención personalizada con IA. Pocas propiedades, mucha dedicación.
-GARANTÍAS: ANDA, CGN, Porto, Sura.
-`;
-
-// Direct Browser Fetch to Google (The "Parachute")
-const getDirectFromGoogle = async (message, step, context) => {
-    console.log("🪂 Using Direct Google API Fallback");
-    try {
-        const systemPrompt = `
-        ACT AS: "Abril", IA de Destino Abril.
-        KNOWLEDGE: ${KNOWLEDGE_BASE}
-        CONTEXT: Step "${step}" (${context}). User said: "${message}".
-        
-        GOAL: Classify and Respond. RETURN JSON ONLY.
-        Format: { "classification": "VALID_DATA"|"QUESTION"|"IRRELEVANT", "reply": "...", "extracted_data": "..." }
-        
-        RULES:
-        - VALID_DATA: Direct answer.
-        - QUESTION: Explain digital model/exclusivity if asked.
-        - DEEP DISCOVERY: If user talks about needs, you can classify as QUESTION to ask follow-ups (lifestyle, security, family) before accepting data, unless data is very complete.
-        `;
-
-        const response = await fetch(API_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                contents: [{ parts: [{ text: systemPrompt }] }]
-            })
-        });
-
-        const data = await response.json();
-        let aiText = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
-        aiText = aiText.replace(/```json/g, '').replace(/```/g, '').trim();
-
-        return JSON.parse(aiText);
-
-    } catch (e) {
-        console.error("Direct API Fail:", e);
-        return {
-            classification: "QUESTION",
-            reply: "Mis disculpas, parece que hay inestabilidad en la red. ¿Podría repetirlo?",
-            extracted_data: null
-        };
-    }
-};
-
-export const getAIResponse = async (userMessage, stepName, stepContext) => {
-    try {
-        // 1. Try Serverless Function (Primary)
-        // Short timeout (3s) to fallback quickly
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000);
-
-        const response = await fetch('/.netlify/functions/chat', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: userMessage, step: stepName, context: stepContext }),
-            signal: controller.signal
-        });
-
-        clearTimeout(timeoutId);
-
-        if (!response.ok) throw new Error("Server unreachable");
-        return await response.json();
-
-    } catch (error) {
-        // 2. Fallback to Direct Google API
-        return await getDirectFromGoogle(userMessage, stepName, stepContext);
-    }
+export const getChatbotResponse = async (mensaje, historial = '') => {
+  try {
+    const res = await fetch(N8N_CHATBOT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mensaje, historial, canal: 'web' })
+    });
+    if (!res.ok) throw new Error('n8n unreachable');
+    return await res.json(); // { respuesta, agente, propiedades_encontradas }
+  } catch {
+    return {
+      respuesta: 'Disculpá, estoy teniendo un problema técnico. ¿Podés repetir tu consulta?',
+      agente: 'April',
+      propiedades_encontradas: 0
+    };
+  }
 };
