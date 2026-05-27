@@ -20,20 +20,30 @@ Inmobiliaria premium Uruguay. Cliente de Automatizame. Web + CRM + agentes IA.
 - `src/supabaseClient.js` — Supabase URL y key
 
 ## Flujo de leads
-Chatbot/Formulario → POST `https://n8n.automatizameuy.com/webhook/destino-abril-lead` → PostgreSQL tabla `leads_destino_abril` + Telegram notificación → Supabase (backup)
+- Web (Chatbot/Form): `https://n8n.automatizameuy.com/webhook/destino-abril-lead`
+- WhatsApp ELI: `+598 096 969 947` (Instancia Evolution: `destino-abril`)
+- Almacenamiento: PostgreSQL tabla `leads_destino_abril` + Telegram notificación
+- Backup: Supabase (`leads`)
 
 ## n8n workflows
 - Lead receptor web: `YY4f8tzNtKawLwaO` (activo)
-- Instagram DM Bot ARIA: `daySEvfuE1WIgmH8` (pausado — falta conectar cuenta IG)
-- Scrapers MeLi/InfoCasas/Gallito: varios en pausa, activar con cuidado
+- Instagram DM### 🧠 AGENTES Y AUTOMATIZACIÓN
+- **Instagram (DESTINY):** Agente especializada en atención visual e inspiradora. 
+  - Workflow: `[DESTINO-ABRIL] DESTINY - Instagram Manager`.
+- **WhatsApp (APRIL):** Agente de cierre y cualificación técnica.
+  - Conexión: **LISTA** (Evolution API).
+  - Número: +598 096 969 947.
+  - Workflow: `[DESTINO-ABRIL] APRIL - WhatsApp Manager`.
+- **Hunters:** RUFLO (Scrapers) buscando en MeLi/InfoCasas./Gallito: varios en pausa, activar con cuidado
 
 ## PostgreSQL (mismo VPS que Automatizame)
 - Tabla leads: `leads_destino_abril`
 - Tabla propiedades: `propiedades_inmobiliaria`
 - Credencial n8n: `rfMpsEVls9DDGX`
 
-## Instagram (pendiente)
-- Workflow creado y listo
+- Cuenta: `@destinoabril` (ID: `17841468655406644`)
+- Estado: Login OK ✅ (Sesión iniciada por Seba)
+- Workflow creado y listo para verificación de webhook
 - Webhook URL: `https://n8n.automatizameuy.com/webhook/destino-abril-instagram`
 - Necesita: cuenta IG conectada en n8n + configurar Meta Business webhook
 
